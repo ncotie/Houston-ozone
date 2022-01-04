@@ -32,6 +32,14 @@ El analisis hecho cubre los fases normales:
 
     Cotie_DataLC_PRA2.html:  el documento final
     Cotie_DataLC_PRA2.Rmd:  el fichero del proyecto en RMarkdown con código R
+    data_daily_vector.csv:  los datos procesados (no incluyendo las columnas extras del apartado 5)
+    
+    Los datos originales:
+    eighthr.data.csv
+    onehr.data.csv
+    eighthr.names.txt
+    onehr.names.txt
+    
     
     
 
