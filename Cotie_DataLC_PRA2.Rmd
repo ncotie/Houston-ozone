@@ -1,0 +1,2812 @@
+---
+title: "M2.851 Tipología y ciclo de vida de los datos: PRA2"
+subtitle: "2021-22-Sem.1"
+author: "Neil Cotie"
+date: "12/2021"
+output: 
+  html_document:
+    highlight: default
+    number_sections: yes
+    theme: cosmo
+    toc: yes
+    toc_depth: 3
+
+  word_document: default
+  pdf_document:
+    highlight: zenburn
+    toc: yes
+---
+
+```{css style settings, echo = FALSE}
+blockquote {
+    padding: 10px 20px;
+    margin: 0 0 20px;
+    font-size: 16px;
+    border-left: 5px solid #eee;
+}
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introducción
+
+El ozono, aunque es esencial en la estratosfera, es un contaminante cuando se encuentra cerca de la superficie, en el troposfera, por su efecto fuerte oxidante.  En humanos y mamíferos impacta los sistemas respiratoria, nerviosa y cardiovascular.  Irrita los ojos y los pulmones, causa irregularidades cardíacas, y aumenta el riesgo de muerte para personas con condiciones respiratorias y cardíacas, como la asma.  En plantas interfiere con la fotosíntesis y reduce el crecimiento.
+
+Esté formado por la interacción de la radiación solar con aire conteniendo compuestos orgánicos volátiles y óxidos de nitrógeno, y se forma o donde se produce esos contaminantes, o mas allá donde se los llevan los vientos.
+
+Efectos son típicamente categorizados por ser causado por exposición aguda (de la escala de una hora) o crónica (de 8 horas a la vez).
+
+Ciudades en latitudes bajas, con radiación solar fuerte y a la vez contaminantes precursores, tiendan a tener niveles de ozono altos, con altitud altos siendo también un factor de incremento.  Según Science.org [ref.1] los peores ciudades globalmente son Karachi, Delhi, Beijing, Lagos, Los Angeles, Mumbai, Dhaka, Paris, Kolkata, Shenzen, Bangkok, Houston, Istanbul, Tokio y Mejico DF.
+
+[Informaciones adaptados de Wikipedia, ref. 2]
+
+Conforme con el riesgo multidimensional, existe estudios meteorológicos para coleccionar datos sobre la contaminación de ozono.  
+
+Para investigar la posibilidad de mejorar predicciones de niveles excesivos de ozono con aprendizaje automatizado, seleccioné el conjunto de datos "Ozone Level Detection Dataset".  Está disponible en    
+
+  https://www.kaggle.com/prashant111/ozone-level-detection
+  
+o en el en la página del UCI Machine Learning Repository en
+
+  https://archive.ics.uci.edu/ml/datasets/ozone+level+detection
+
+# Los datos
+
+El dataset incluye dos ficheros, uno para cada clase de contaminación alta, aguda (de una hora) o crónica (de 8h).  Tenemos la fecha, luego 72 medidas por cada día, y después el atributo de contaminación.  Las medidas y fechas son iguales para cada fichero, la unica diferencia es la clase de contaminación.
+
+En el fichero 8h, la clasificación está basada en una normativa de contaminación de ozono medida por la media de las lecturas cada hora por 8h.  Cuando está arriba de 80 ppb (partes por mil millón) se clasifica como contaminación alta.  
+
+En contra, en el fichero 1h, la medida está basada en cualquier lectura puntual siendo más que 120 ppb.  Esas dos medidas forman dos estándares de la Agencia de la Protección Medioambiental (EPA), para calificar contaminación de ozono en los EEUU, aunque parece que los limites numéricos ha sido modificado desde la creacion del dataset en 1998-2004.  [Ref. 3]
+
+Aparte de esa clasificación, los datos son idénticos en los dos ficheros.
+
+
+## Bibliotecas R
+
+Una nota administrativa: en ese documento no se va a explicitar los comandas R para instalar paquetes como que hay tendencia de causar problemas.
+
+En lugar, se recogerá todos los library() aquí.
+
+```{r, warning=FALSE, results=FALSE, echo=FALSE}
+library(R.utils)
+library(ggplot2)
+library(corrplot)
+library(car)
+library(psych)
+
+# gamma
+library(goft)
+# for pamk
+library(fpc)
+
+library(glue)
+
+# for %>%
+library(magrittr)
+
+library(tidyverse)
+
+library(mclust)
+# for CrossTable
+library(gmodels)
+
+# for SVM
+library(e1071)
+
+library(caret)
+
+library(dbscan)
+
+# for kNN()
+library(VIM)
+
+# for between()
+library(dplyr)
+
+library(C50)
+
+library(NeuralNetTools)
+
+
+```
+
+
+
+## Carga de datos
+
+Los dos ficheros de datos son de tipo .csv, y si los abrimos en un editor, e.g. Notepad++, se puede ver que:
+
+* el separador es coma, 
+* no hay doble comillas encapsulando cualquier atributo,
+* no hay una cabecera,
+* hay 74 campos en total en cada fichero, incluyendo una de fecha y la clase,
+* solo hay valores numéricos y fechas,
+* solo se usa el punto como símbolo decimal,
+* las fechas tienen formato tipo: 1/31/1998, o M/D/YYYY
+* hay 2634 filas de datos en el fichero de 8h, y 2536 filas de datos en el fichero de 1h.
+
+
+Los nombres de las columnas han sido establecidos según la información en los ficheros acompañantes, eighthr.names.txt y onehr.names.txt.
+
+Nota que por algunos campos tienen '?' cuando falta datos, pero remplazamos eso por un NA de R durante la lectura de los ficheros.
+
+```{r }
+
+data8h <- read.table('eighthr.data.csv', sep=',', header = FALSE, na.strings = '?')
+
+data1h <- read.table('onehr.data.csv', sep=',', header = FALSE, na.strings = '?')
+
+names(data1h) <- c("DATE","WSR0","WSR1","WSR2","WSR3","WSR4","WSR5","WSR6","WSR7","WSR8","WSR9","WSR10","WSR11","WSR12","WSR13","WSR14","WSR15","WSR16","WSR17","WSR18","WSR19","WSR20","WSR21","WSR22","WSR23","WSR_PK","WSR_AV","T0","T1","T2","T3","T4","T5","T6","T7","T8","T9","T10","T11","T12","T13","T14","T15","T16","T17","T18","T19","T20","T21","T22","T23","T_PK","T_AV","T85","RH85","U85","V85","HT85","T70","RH70","U70","V70","HT70","T50","RH50","U50","V50","HT50","KI","TT","SLP","SLP_","Precp","OzoneDay1hPeak")
+
+names(data8h) <- c("DATE","WSR0","WSR1","WSR2","WSR3","WSR4","WSR5","WSR6","WSR7","WSR8","WSR9","WSR10","WSR11","WSR12","WSR13","WSR14","WSR15","WSR16","WSR17","WSR18","WSR19","WSR20","WSR21","WSR22","WSR23","WSR_PK","WSR_AV","T0","T1","T2","T3","T4","T5","T6","T7","T8","T9","T10","T11","T12","T13","T14","T15","T16","T17","T18","T19","T20","T21","T22","T23","T_PK","T_AV","T85","RH85","U85","V85","HT85","T70","RH70","U70","V70","HT70","T50","RH50","U50","V50","HT50","KI","TT","SLP","SLP_","Precp","OzoneDay8hAvg")
+
+```
+
+## Desglose de los atributos de las medidas
+
+Cada fila consiste del conjunto de medidas medioambientales por una fecha, empezando el 1.1.1998 hasta el 31.12.2004.  
+
+Después de la fecha, tenemos:
+
+* 24 medidas de velocidad del viento [WSR = *Wind Speed Reading*] para cada hora del día, WSR0-WSR23
+* Dos cálculos de la velocidad del viento, la máxima (WSR_PK [PK = *Peak*]) y la media (WSR_AV) del día
+* 24 medidas de temperatura para cada hora del día, T0-T23
+* Dos cálculos de la temperatura, la máxima (T_PK) y la media (T_AV) del día, en grados Celsius
+* Tres conjuntos de datos a distintos alturas, determinados por presión atmosférica de 850, 700, y 500 hPa, que son aproximadamente altitudes de 1500m, 3100m, y 5500m.  Esos datos son:
+
+  + Temperatura (T)
+  + Humedad relativa (RH)
+  + Velocidad del viento en dos vectores, uno este-oeste (U) y el otro norte-sur (V)
+  + Altura ajustada por gravedad de la tierra [donde tenemos la presión atmosférica indicada] (HT) [Ref. 5]
+
+* K-Index (KI): un cálculo de la potencial por tormentas eléctricas, basado en el grado de dispersión de humedad a distintos alturas. Está calculado basándose en la diferencia entre temperaturas a 850 y 500 hPA, el punto de rocío a 850 hPa [que puede estar aproximado con la humedad relativa y la temperatura a 850 hPa], y la diferencia entre la temperatura y el punto de rocío a 700 hPA.  Por tanto, es un derivado de los datos anteriores. [Ref. 3, 6]
+
+* Total-Totals Index (TT): un cálculo de la potencial de tormentas severas (e.g. ciclones), igual a la temperatura a 850 hPa más el punto de rocío a 850 hPa, menos dos veces la temperatura a 500 hPa.  Valores por encima de 55 tienen una fuerte correlación con tormentas. [El punto de rocío es la temperatura en que una humedad atmosférica concreta condensará, y se puede aproximar de la humedad relativa y la temperatura, por decir que tenemos en los otros datos lo necesario para aproximar el punto de rocío, y con eso, calcular ese Index.] [Ref. 3, 6]
+
+* Presión al nivel del mar (SLP, o *Sea Level Pressure*)
+* Cambio en la presión al nivel del mar comparado al día anterior (SLP_)
+* Precipitación (Precp) 
+
+## Exploración de datos
+
+```{r }
+summary(data8h)
+
+```
+
+Falta entre 100-300 valores para cada atributo, aparte de "OzoneDay", la categoría clasificadora, de más de 2500 filas.  
+
+Miramos la forma de los datos con head() y str().
+
+```{r}
+head(data8h)
+str(data8h)
+```
+
+Las fechas son en formato americano con el mes primero.  Convertimos en formato ISO, porque manejaremos las fechas posteriormente.
+
+```{r}
+data8h$DATE <- as.Date.character(data8h$DATE, tryFormats = c("%m/%d/%Y"))
+data1h$DATE <- as.Date.character(data1h$DATE, tryFormats = c("%m/%d/%Y"))
+
+head(data8h)
+head(data1h)
+
+
+```
+Del trabajo de "Forecasting Skewed Biased Stochastic Ozone Days", sabemos que los datos tienen relativamente pocas días con alta Ozona comparado a la totalidad de filas.  Miramos que es la situación.
+
+```{r}
+
+sum(data8h$OzoneDay8hAvg)
+sum(data1h$OzoneDay1hPeak)
+
+```
+
+Podemos sumar los valores en la columna de clasificación como que tiene valores 0 o 1 por días de contaminación.
+Entre 2534(2536) filas, tenemos solo 160 días con la media 8h por encima del límite, y 73 días con picos agudos en escala de una hora.  Aunque está positivo por el medio ambiente, es un posible reto por la capacidad de modelos de bien identificar los días de Ozona.  
+
+
+
+
+# Preprocesado
+
+Haremos varios pasos de preprocesado para asegurar la mayor utilidad de los datos y facilitar pasos posteriores.
+
+Brevemente, haremos:
+
+* integración de los dos ficheros separados, resolviendo la diferencia de 2 registros
+* verificación de correlación de los datos de nivel diaria, por si unos parecen redundantes
+* la extensión de cada registro con datos del día anterior, para facilitar un análisis que incluye las condiciones meteorológicas del día anterior
+* un ejercicio de conversión de los datos horarios de temperatura y velocidad del viento a un vector, y intentar clasificar los vectores en distintos tipos.  La intención es de reducir los atributos de analizar posteriormente pero también evaluar si tenemos comportamientos distinguibles de medidas horarias que tienen relación con la producción de ozono.
+* normalización de escala de los datos diarios
+
+## Integración
+
+Los datos en los dos ficheros, data1h y data8h aquí, son idénticos aparte de la clase de ozono, y por haber dos registros extras en el fichero de data1h.  Por tanto, después de confirmar la causa de la diferencia de número de registros, podemos combinarlos en un fichero, que tienen ambos clases.
+
+Confirmamos primero que no es cuestión de fechas duplicadas:
+
+```{r}
+sum(duplicated(data1h$DATE))
+```
+
+Como que no hay duplicadas, ahora buscaremos uno por uno las diferencias en fechas.  Hacemos un iterativo para encontrar las fechas que no están alineados.
+
+
+```{r}
+for (i in (1:nrow(data1h))) {
+  if (data1h$DATE[i] != data8h$DATE[i]) {
+    print(data1h$DATE[i], data8h$DATE[i] )
+    capt_i <- i
+    print(capt_i)
+    break
+  }
+}
+```
+
+```{r}
+data1h$DATE[159:163]
+data8h$DATE[159:163]
+
+```
+
+Vemos que falta 1998-06-10 en data8h.
+Adaptamos la diferencia de una linea en la iterativa y buscamos el siguiente.
+
+```{r}
+for (i in (162:nrow(data1h))) {
+  if (data1h$DATE[i] != data8h$DATE[i-1]) {
+    print(data1h$DATE[i], data8h$DATE[i-1] )
+    capt_i <- i
+    print(capt_i)
+    break
+  }
+}
+```
+
+```{r}
+data1h$DATE[540:545]
+data8h$DATE[539:544]
+```
+
+Entonces las dos filas distintas son claramente dos días que faltan en data8h.  Si confirmemos que en data1h esos dos días no son de ozono alto, tomaré la decisión de marcarles también de ozono bajo al nivel 8h, y procedemos a integrar los dos ficheros.
+
+```{r}
+data1h[161, "OzoneDay1hPeak"]
+data1h[542, "OzoneDay1hPeak"]
+```
+
+```{r}
+#a = c(1,2,3,4,6,7)
+#insert(a, c(5,6), 9)
+
+Oz8h <- insert(data8h$OzoneDay8hAvg, c(161, 542), 0)
+#length(Oz8h)
+
+data_tot <- cbind(data1h, Oz8h)
+#str(data_tot)
+```
+
+Entonces, en adelante, usaremos el dataframe **data_tot** generalmente.
+
+Haremos una prueba de viabilidad ahora, para ver hasta qué punto están los datos sin saltos o huecos de fechas.
+
+```{r}
+
+dates <- data_tot$DATE
+prev_date_step <- rep(NaN, length(dates))
+
+
+for (i in (1:length(dates))) {
+  if (i==1) {
+    prev_date_step[i] <-NA
+  }
+  else {
+    prev_date_step[i] <-dates[i] - dates[i-1]
+  }
+}
+
+dates <- as.data.frame(cbind (as.character(dates), prev_date_step))
+names(dates) <- c("Date", "prev_date_step")
+dates$Date <- as.Date(dates$Date)
+```
+
+```{r}
+
+table(prev_date_step)
+dates[dates$prev_date_step > 1, ]
+summary(dates)
+```
+
+Recogemos las lineas donde tenemos un salto para verificar si hay un día de ozono entre ellas:
+
+```{r}
+lines_w_step <- which(dates$prev_date_step > 1)
+data_tot[lines_w_step, "Oz8h"]
+data_tot[lines_w_step, "OzoneDay1hPeak"]
+
+```
+
+Tenemos 8 registros en que saltamos más que un día, y 2527 en qué salta solo un día como esperado, pero parece que ninguno es un día de ozono.
+
+Entonces no nos causa mucha complicación si después nos los quitamos, y por el paso actual de integración, podemos añadir los campos de la fila anterior a los registros.  Pero, para no perder consciencia de esos saltos, incluyamos también *prev_date_step*.  Así podemos filtrar más tarde cuando necesario.  Recordamos que la primera fila tendrá NA por no tener una fila anterior.
+
+
+*Pero, para no tener que tratar valores NA en dos sitios, haremos esa manipulación después del resto del preprocesamiento.*
+
+
+
+## Selección
+
+En la selección de atributos, tenemos la oportunidad de quitar los que no parecen tener relevancia.  En ese caso, todos los atributos disponibles son medidas directas, o derivaciones, de fenómenos y procesos atmosféricos.  Por tanto, *prima facie*, no tenemos motivos para quitar cualquier atributo.
+
+No obstante, podemos probar los datos para correlación con los clases de ozono alto.  
+
+### Cálculos de correlación: Datos diarios vs Ozono
+
+Primero, un calculo de correlación usando cor():
+
+```{r}
+# Prepare two name vectors to be able to subset the daily variables
+daily_data_columns_with_classes <- c("WSR_PK","WSR_AV","T_PK","T_AV","T85","RH85","U85","V85","HT85","T70","RH70","U70","V70","HT70","T50","RH50","U50","V50","HT50","KI","TT","SLP","SLP_","Precp","OzoneDay1hPeak", "Oz8h")
+
+daily_data_columns_without_classes <- c("WSR_PK","WSR_AV","T_PK","T_AV","T85","RH85","U85","V85","HT85","T70","RH70","U70","V70","HT70","T50","RH50","U50","V50","HT50","KI","TT","SLP","SLP_","Precp")
+
+# Subset the Ozone classes by themselves for correlation.
+oz_classes_only <- subset(data_tot, select=c("Oz8h", "OzoneDay1hPeak"))
+
+# Subset the daily variables without classes columns and perform correlation between them and the ozone classes.
+Oz_corr_to_dailydata <- cor(oz_classes_only, subset(data_tot, select=daily_data_columns_without_classes), use = "pairwise.complete.obs", method="spearman")
+
+Oz_corr_to_dailydata
+corrplot(Oz_corr_to_dailydata)
+```
+
+Arriba podemos ver que la correlación general entre los clases de ozono alto, y los datos diarias, es débil por todos.  La falta de un rango razonable de valores de correlación no nos informa ni de la importancia ni redundancia de cualquier dato diario, y por tanto, los conservaremos todos en la continuación.
+
+Si hay unos que podemos considerar para quitar, podremos, por ejemplo, filtrar por correlaciones con valores dentro de (-0.05, 0.05).  Eso criterio daría los candidatos:
+
+* RH85, RH70, pero no RH50 (la humedad relativa a tres alturas)
+* KI y TT (indicaciones de potencial de tormentas)
+* SLP_ (la diferencia de la presión atmosférica desde el día anterior)
+
+Guardamos los candidatos hasta que miramos correlaciones entre los atributos en el paso siguiente (Reduccíón de datos).
+
+### Contrastes de correlación: Datos diarios vs Ozono
+
+Mirando los mismo datos, pero de punto de vista de un contraste (prueba estadística) de las mismas correlaciones, para determinar si podemos aceptar o rechazar una hipótesis nula, que especifica que las correlaciones individuales son cero.  Usaremos corr.test() del paquete psych, con el método *Spearman** dado que los datos no son normales (aunque no les hemos visualizado todavía, no son).
+
+
+```{r}
+Oz_corr_to_dailydata.test <- corr.test(oz_classes_only, subset(data_tot, select=daily_data_columns_without_classes), use = "pairwise", method="spearman", adjust="holm", alpha=.05, ci=TRUE, minlength=5, normal=FALSE)
+
+print(Oz_corr_to_dailydata.test, short=TRUE)
+
+Oz_corr_to_dailydata.test$p.adj
+```
+
+El primer grupo de valores nos dan valores de correlación, los mismos que el paso anterior.
+
+Los dos siguientes grupos son valores $p$ resultantes del contraste.  Los contrastes prueba una hipotesis nula diciendo que la correlación es cero, y por tanto, las parejas donde hay un valor $p$ mayor que un nivel de significancia, por ejemplo 0.05 (5%), tenemos que *no rechazar* esa hipótesis.  Eso se aplica para:
+
+* RH85, SLP contra Ozono de 1h aguda
+* RH70, KI, TT, SLP_ contra ambos Ozono
+
+Por el resto, tiene valores $p$ muy pequeños y tenemos que rechazar el hipótesis y suponer que sí, hay una correlación significativa.
+
+Eso confirma la sustracción de RH70, KI, TT, SLP_ al menos.
+
+### Cálculos de correlación: Datos horarios vs Ozono
+
+
+Haremos lo mismo, para ver los datos horarios, separando las temperaturas y las velocidades del viento.
+
+```{r}
+# Prepare two name vectors to be able to subset the hourly variables
+hourly_temps <- c("T0","T1","T2","T3","T4","T5","T6","T7","T8","T9","T10","T11","T12","T13","T14","T15","T16","T17","T18","T19","T20","T21","T22","T23")
+
+hourly_wsrs <- c("WSR0","WSR1","WSR2","WSR3","WSR4","WSR5","WSR6","WSR7","WSR8","WSR9","WSR10","WSR11","WSR12","WSR13","WSR14","WSR15","WSR16","WSR17","WSR18","WSR19","WSR20","WSR21","WSR22","WSR23")
+
+# Subset the hourly temperature variables without classes columns and perform correlation between them and the ozone classes.
+Oz_corr_to_hourlytemps <- cor(oz_classes_only, subset(data_tot, select=hourly_temps), use = "pairwise.complete.obs", method="spearman")
+
+Oz_corr_to_hourlytemps
+corrplot(Oz_corr_to_hourlytemps)
+```
+
+y de nuevo para velocidades del viento, datos horarios:
+
+```{r}
+# Subset the hourly WSR variables without classes columns and perform correlation between them and the ozone classes.
+Oz_corr_to_hourlyWSRs <- cor(oz_classes_only, subset(data_tot, select=hourly_wsrs), use = "pairwise.complete.obs", method="spearman")
+
+Oz_corr_to_hourlyWSRs
+corrplot(Oz_corr_to_hourlyWSRs)
+```
+
+Lo interesante es que tenemos mejores correlaciones con varios datos horarios, subiendo en unas horas hasta 0.26, comparado con los datos diarios, generalmente.  Eso es verdad con las temperaturas, y las velocidades del viento.  Eso implica naturalmente que los datos horarios tienen información relevante para la predicción de ozono.
+
+Podríamos usar esos resultados para quitar unos, e.g. WSR17-WSR20, donde vemos correlaciones muy bajas, pero hay otra estrategia pensado para reducción de datos, que usara todos las medidas horarias.
+
+No quitaremos los sobrantes, hasta después del siguiente paso.
+
+## Reducción de datos
+
+Aquí estudiemos la posibilidad de que algunos atributos están redundantes entre sí, al menos al nivel de correlaciones.  Por esos motivos, es irrelevante si tienen correlaciones con los clases, solo entre sí.
+
+Notamos que solo se considera atributos diarios aquí.
+
+```{r}
+
+# Produce a correlation matrix of the daily attributes
+daily_data_correlation <- cor(subset(data_tot, select=daily_data_columns_without_classes), use = "pairwise.complete.obs", method="spearman")
+
+round(daily_data_correlation, 2)
+
+corrplot(daily_data_correlation)
+```
+
+Revisamos los puntos de interés aquí:
+
+* T_AV y T_PK, las temperaturas medias diarias y máximas diarias, tienen una correlación muy alta.  Podremos elegir un o el otro, pero anteriormente se puede ver que T_PK tiene correlación mas alta con días de ozono que T_AV, entonces mejor que usamos T_PK.   
+
+* Las temperaturas a distintas alturas (T85, T70, T50) también tienen correlación alta con T_AV y T_PK, pero como que nos dan más información de la columna de aire prefiero conservarlas.  Perfiles distintas de densidad atmosférica con la altura (cosa muy relacionado con la temperatura) puede entenderse como un factor en si hay un efecto de captura de contaminantes contra el suelo.
+
+* HT50, HT70 tienen alta correlación con Temperatura, y HT50, 70, 85 entre sí.  Esos son alturas ajustadas donde se encuentran presiones atmosféricas de 850, 700, 500 mPa, y como para los T85,70,50, nos dan más informaciones sobre la columna de aire y prefiero no quitar eso sin motivo muy fuerte.  Pero, es posible que tenemos más información de un conjunto que el otro, e.g. de los HTxx que los Txx, o viceversa.  *Volveremos a esa pregunta.*
+
+* U70, U50, pero no U85, tienen alta correlación negativa con T_AV, T_PK, los Txx, los HTxx, etc.  Eso resulta curioso, como que eso el componente del velocidad del viento este-oeste, y el componente norte-sur, Vxx, no tiene esa correlación.  En principio, podemos decir que las temperaturas bajan con más viento este-oeste.  Eso tiene relevancia como que los procesos de producción de ozono tienen relación con la radiación solar, y a la vez, la cantidad de contaminantes precursores disponibles en la localidad.  
+
+* Los grupos de valores U85, U70, U50, de V85, V70, V50, y de RH85, RH70, RH50 tienen todos correlaciones altas entre sí (dentro de cada grupo de tres medidas), como esperado.  
+
+* SLP tiene correlación positiva con HT85 y negativa con T85, que es lógico dado la relación física entre temperatura de gases y su presión.  *Entonces podemos añadir SLP a ser candidato de redundante.*
+
+* SLP_ (diferencia del día anterior) tiene, curiosamente, una correlación negativa decente con V85, pero con poco más.
+
+* Precp tiene casi nada de correlación con otro atributo, entonces queda bien independiente.  
+
+* RH85, RH70, y RH50 tienen correlaciones con KI y TT, pero mayores con RH85, RH70 que con RH50 (lógico como que ese ultimo es de alturas mayores).
+
+
+
+
+Entonces, las verificaciones por correlaciones con días de ozono ha producido esos como candidatos a quitar por irrelevancia:
+
+* RH85, RH70, pero no RH50 (la humedad relativa a tres alturas)
+* KI y TT (indicaciones de potencial de tormentas)
+* SLP_ (la diferencia de la presión atmosférica desde el día anterior)
+
+El contraste de correlación ha confirmado la irrelevancia de:
+* RH70, KI, TT, SLP_
+
+
+Las verificaciones por correlación alto entre atributos ha producido esos como candidatos a quitar por redundancia:
+
+* T_AV o T_PK pero de preferencia T_AV
+* Hay que investigar cual usar, HT85, HT70, y HT50, o T85, T70, T50
+* SLP (aunque tiene más correlación con Ozono que tiene SLP_)
+
+
+
+### Investigación: SLP
+
+Como que SLP mostraba algo de correlación con Ozono, haremos algunos pruebas antes de elegir definitivamente si quitarlo.
+
+Primero, visualización comparado a Ozono de 8h, con cúal tenía más correlación:
+
+```{r}
+plot(as.factor(data_tot$Oz8h), data_tot$SLP, ylab="SLP", xlab="Ozone8h")
+```
+
+Da la impresión de tener una media del SLP diferente por días de ozono 8h.
+
+Contrastamos con una prueba de la media de los dos subconjuntos, uno casos de Ozono8h, y el otro sin ozono alto.  Notamos que estaremos tratando medidas del valor medio de SLP, y se puede aplicar el teorem central de limite, como que tenemos muestras con cantidades grandes.  El menos es el de Ozono8h, y tiene 160 casos.
+
+```{r}
+SLP_Oz8h <- data_tot$SLP[data_tot$Oz8h == 1]
+SLP_not_Oz8h <- data_tot$SLP[data_tot$Oz8h == 0]
+
+t.test(SLP_not_Oz8h, SLP_Oz8h, alternative = "two.sided", var.equal = FALSE, conf.level = 0.95)
+
+```
+
+Según la prueba, la diferencia de la media de SLP está significativa, entre días de Ozono 8h y no.  Eso nos indica que puede ser que tiene suficientemente información para quedar con el atributo.
+
+
+### Investigación: uso de HT85, HT70, y HT50, o T85, T70, T50
+
+En las pruebas de correlación de los atributos contra las clases de ozono, se puede constatar que los Txx daban mayor correlación generalmente que los HTxx.  Eso indica una preferencia de quedar con los Txx y quitar los HTxx.
+
+Podremos intentar comparar un modelo de regresión usando los Txx con uno usando los HTxx:
+
+```{r}
+Oz8h_Txx_regr <- glm(Oz8h ~ T85 + T70 + T50, data_tot, family = "binomial")
+summary(Oz8h_Txx_regr)
+
+Oz8h_HTxx_regr <- glm(Oz8h ~ HT85 + HT70 + HT50, data_tot, family = "binomial")
+summary(Oz8h_HTxx_regr)
+```
+
+Los resultados son interesantes:
+
+* Las medias y varianzas de los residuos del modelo Txx son ligeramente mejores
+* Los criterios AIC son un poco mejor en el modelo Txx
+* El modelo Txx tiene coeficientes significativos con la intersección y T85 (la del altitud mas baja), mientras que el modelo HTxx tiene ademas un coeficiente significativo con el segundo independiente, HT70.  Pero, el coeficiente de HT85 es un grado menos significativo, entre 0.01 y 0.001, mientras que el coeficiente de T85 tiene valor p menor que 0.001, por decir más seguro de no estar cero.
+
+Aunque las diferencias no son muy grandes, mantiene la impresión de que sería mejor quedar con los Txx.  Eso dicho, podemos también elegir descartar HT70 y HT50 si HT85 nos mejora el modelo.  Probamos:
+
+```{r}
+Oz8h_Txx_HT85_regr <- glm(Oz8h ~ T85 + T70 + T50 + HT85, data_tot, family = "binomial")
+summary(Oz8h_Txx_HT85_regr)
+```
+
+El modelo tiene un AIC un poco mejor, pero notamos que los coeficientes no dan significación a HT85.  Por tanto, es otra indicación de que queda redundante como supuesto arriba.
+
+
+### Sustracción de T_AV, RH70, KI, TT, SLP_
+
+Terminamos el apartado de Selección quitando los atributos identificados como candidatos confirmados:
+
+* RH70 (la humedad relativa de la altura media)
+* KI y TT (indicaciones de potencial de tormentas)
+* SLP_ (la diferencia de la presión atmosférica desde el día anterior)
+* T_AV
+* HT85, HT70, y HT50
+
+```{r}
+data_reduced <- subset(data_tot, select= -c(RH70, KI, TT, SLP_, T_AV, HT85, HT70, HT50))
+```
+
+En adelante, usaremos el dataframe **data_reduced**.
+
+
+
+## Conversión
+
+Aquí tenemos dos iniciativas:
+
+* la normalización de los datos en una escala tipo rango (0,1)
+* la transformación de los datos horarias en vectores agrupados en *clusters*
+
+### Verificación por valores extremos - Outliers
+
+Antes de normalizar los datos, haremos un repaso para confirmar que no hay datos no razonables en el conjunto.
+
+Para poder hacer gráficos de los datos de temperatura y velocidad del viento cada hora, funciona mejor si les convertimos en forma “tidy”.  Una serie de temperaturas cada hora al final es una combinación de dos variables: temperatura y hora. También, para que ggplot les trata en el orden correcto, hay que convertir la “hora” en “factor” con sus niveles, sino ggplot coge los x en orden alfabético.
+
+
+
+```{r}
+# Use tidyverse to pivot WSR and T data such that we have only columns Date, Time, Temp (or WSR)
+
+# Separate out WSR and Temp hourly data into separate files, along with Date column for each.
+WSRdata <- data_reduced[1:25]
+Tdata <- cbind(data_reduced[1],data_reduced[28:51])
+
+# Create name vectors for the hourly values to provide to pivot_longer 
+WSRs <- c("WSR0","WSR1","WSR2","WSR3","WSR4","WSR5","WSR6","WSR7","WSR8","WSR9","WSR10","WSR11","WSR12","WSR13","WSR14","WSR15","WSR16","WSR17","WSR18","WSR19","WSR20","WSR21","WSR22","WSR23")
+
+Ts <- c("T0","T1","T2","T3","T4","T5","T6","T7","T8","T9","T10","T11","T12","T13","T14","T15","T16","T17","T18","T19","T20","T21","T22","T23")
+
+
+# Pivot tables into tidy versions with only 3 columns each.
+WSRtidy <- WSRdata %>% 
+  pivot_longer(all_of(WSRs), names_to = "HourofDay", values_to = "WindSpeed")
+
+Ttidy <- Tdata %>% 
+  pivot_longer(all_of(Ts), names_to = "HourofDay", values_to = "Temperature")
+
+WSRtidy$HourofDay <- factor(WSRtidy$HourofDay, levels = WSRs)
+Ttidy$HourofDay <- factor(Ttidy$HourofDay, levels = Ts)
+```
+
+Así, para poder visualizar los valores cada hora, hemos hecho una transformación a los datos de velocidad del viento y temperatura de cada hora. Con esos cambios, hemos hecho primero unas tablas especificas para cada tipo de medida, de Fecha mas las 24 columnas para cada hora. Entendemos que todos esos medidas en principio son la misma variable, y se pueden concatenar todas en la misma columna si modulemos los datos con la hora del dia.
+
+La función pivot_longer() hace exactamente eso, para que podemos ahora producir gráficos que podemos apreciar mejor.
+
+En los gráficos tipo violin, podemos ver el extenso de esos datos y apreciar que son todos razonables.
+
+```{r}
+ggplot(WSRtidy, aes(x=HourofDay,y=WindSpeed)) + geom_violin() + geom_smooth(fullrange=TRUE) + theme(axis.text.x = element_text(angle=45)) 
+
+ggplot(Ttidy, aes(x=HourofDay,y=Temperature)) + geom_violin() + geom_smooth(fullrange=TRUE) + theme(axis.text.x = element_text(angle=45)) 
+```
+
+En cuanto al resto de los datos, vamos en partes.
+
+* un conjunto de velocidades de vientos: WSR_PK, WSR_AV, U85, V85, U70, V70, U50, V50
+* un conjunto de velocidades de vientos: T_PK, T85, T70, T59
+* dos proporciones de humedad relativa: RH85, RH50
+* dos misceláneo: SLP en mPa, Precp.  
+
+Como se puede ver en los boxplots abajo, todos los valores quedan dentro de un rango razonable para esos atributos físicos, si no consideramos los NA.
+
+Incluso los valores de SLP, la presión atmosférica, si entendemos que falta el punto decimal para que sean en mbar / hPa. [Ref. 10], y los valores de precipitación, se supone en mm, cuadran con los rangos descritos en [Ref. 11].  Allí describan el mes más lluvioso como junio, con lluvia mensual media de 151mm, cosa que hace un máximo de 21mm aquí muy plausible.
+
+```{r}
+boxplot(subset(data_reduced, select = c(T_PK, T85, T70, T50)), ylab = "Temperaturas") 
+
+boxplot(subset(data_reduced, select = c(RH85, RH50)), ylab = "Proporción de humedad relativa") 
+
+boxplot(subset(data_reduced, select = c(WSR_PK, WSR_AV, U85, V85, U70, V70, U50, V50)), ylab = "Velocidades del viento")
+
+plot(data_reduced$SLP, ylab="Presión atmosferica al nivel del mar")
+plot(data_reduced$Precp, ylab="Precipitación")
+```
+
+Es correcto que en otros circunstancias, se podría considerar la eliminación de unos valores razonables pero extremos para mejorar el análisis, pero en nuestro contexto no hay motivo.  Nuestros datos tienen eventos de interés que son poco frecuentes, y atributos poco frecuentes en los datos podrían incluso ayudar a la predicción de los días de ozono.  Entonces dejamos todos en el conjunto de datos sin filtración.  No obstante, hay valores perdidos, que trataremos posteriormente.
+
+
+
+### Normalización de datos
+
+Los datos nuestros no son normales, y por tanto no tiene sentido considerar normalización z-score, pero no hay problema hacer normalización tipo min-max.  Incluso es necesario hacerlo, por evitar problemas con la escala muy distinta de los atributos varios, e.g. 10k para SLP y por debajo de 1 para otros.
+
+Por partes:
+
+* los valores WSR0-23, WSR_AV, WSR_PK pueden ser normalizados todos en un escala común, con un mínimo natural de cero, hasta un máximo de 10, mapeado a 1 normalizado.  El máximo actual es 9.6.  
+* los valores T0-23, T_PK pueden ser normalizados todos en un escala común, con un mínimo de -5 mapeado a cero, hasta un máximo de 45, mapeado a 1 normalizado.  El mínimo actual es -3, y el máximo actual es 41.5. 
+
+Por la transformación en vectores, es importante que esos valores horarios se encuentran en la misma escala.
+
+Siguiendo:
+
+* los valores T85, T70, T50 tienen rangos de valores que no solapan bien, pero tampoco no es necesario igualar un valor de T85 contra un valor de T70, por ejemplo.  Entonces podemos usar una normalización (0,1) individual para cada uno.  No es importante mantener el aspecto negativo-positivo.
+* los valores RHxx son ya en rango (0,1) por su naturaleza.
+* SLP y Precp pueden ser normalizados individualmente en un rango (0,1).
+* los valores direccionales del viento Uxx, Vxx, necesitan una normalización que mantengan su signo y su escala comparado a cero, por ser una dirección además de una velocidad.  Son componentes de un vector.  Tienen máximos actuales de +42 y mínimos de -26.  Una transformación dividiendo por 50 les dejaran en un rango de (-0.52, 0.84).
+
+WSR0-23, AV, PK:
+
+```{r}
+# Map WSRxx values to (0,1) from original (0,10), so divide by 10
+div10 <- function(wsr) {
+  return (wsr/10)
+}
+
+# copy reduced data into data_norm to continue
+data_norm <- data_reduced
+
+for (xx in (0:23)) {
+  data_norm[[glue("WSR{xx}")]] <- sapply(eval(parse(text = glue("data_reduced$WSR{xx}"))), div10)
+}
+
+data_norm$WSR_AV <- sapply(data_reduced$WSR_AV, div10)
+data_norm$WSR_PK <- sapply(data_reduced$WSR_PK, div10)
+
+```
+
+
+T0-23, PK:
+
+```{r}
+# Scale -5 to zero, up to 45 scale to 1
+temp_norm <- function(t) {
+  return ( (t+5)/50 )
+}
+
+for (xx in (0:23)) {
+  data_norm[[glue("T{xx}")]] <- sapply(eval(parse(text = glue("data_reduced$T{xx}"))), temp_norm)
+}
+
+data_norm$T_PK <- sapply(data_reduced$T_PK, temp_norm)
+
+```
+
+Ahora tenemos los datos normalizados en **datos_norm** en adelante.
+
+
+T85, T70, T50, SLP y Precp:
+
+```{r}
+# Scale (min,max) to (0,1)
+min.max.norm <- function(x, min.x, max.x) {
+  return ( (x-min.x) / (max.x-min.x))
+}
+
+data_norm$T85 <- sapply(data_reduced$T85, min.max.norm, min(data_reduced$T85, na.rm = TRUE), max(data_reduced$T85, na.rm = TRUE))
+data_norm$T70 <- sapply(data_reduced$T70, min.max.norm, min(data_reduced$T70, na.rm = TRUE), max(data_reduced$T70, na.rm = TRUE))
+data_norm$T50 <- sapply(data_reduced$T50, min.max.norm, min(data_reduced$T50, na.rm = TRUE), max(data_reduced$T50, na.rm = TRUE))
+
+data_norm$SLP <- sapply(data_reduced$SLP, min.max.norm, min(data_reduced$SLP, na.rm = TRUE), max(data_reduced$SLP, na.rm = TRUE))
+
+data_norm$Precp <- sapply(data_reduced$Precp, min.max.norm, min(data_reduced$Precp, na.rm = TRUE), max(data_reduced$Precp, na.rm = TRUE))
+
+```
+
+Uxx, Vxx:
+
+```{r}
+# Map U,Vxx values to approx (-0.52, 0.84) from original, dividing by 50
+div50 <- function(wsr) {
+  return (wsr/50)
+}
+
+data_norm$U85 <- sapply(data_reduced$U85, div50)
+data_norm$U70 <- sapply(data_reduced$U70, div50)
+data_norm$U50 <- sapply(data_reduced$U50, div50)
+
+data_norm$V85 <- sapply(data_reduced$V85, div50)
+data_norm$V70 <- sapply(data_reduced$V70, div50)
+data_norm$V50 <- sapply(data_reduced$V50, div50)
+
+```
+
+
+Confirmamos que tenemos todo normalizado en **data_norm**:
+
+```{r}
+summary(data_norm)
+```
+
+### Conversión de datos horarios en vectores agrupados
+
+La iniciativa mayor de reducción de datos bajo consideración es la conversión de las secuencias de datos horarios en vectores clasificados, si es posible.  Eso significaría la reducción de 48 datos diarios en 2 datos transformados.  
+
+Tenemos unas propuestas de algoritmos para clasificar los vectores, que investigaremos a continuación:  
+
+* K-medoids usando PAM
+* Model-based clustering usando mclust
+* Density-based clustering usando dbscan
+* Support-vector machine clustering (el unico supervisado)
+
+#### Investigación: clasificando vectores de temperaturas con PAM (no supervisado)
+
+
+```{r}
+T_clusters <- pamk(na.omit(data_norm[28:51]), krange = 2:10, criterion = "ch", usepam = TRUE)
+```
+
+```{r}
+
+head(T_clusters$pamobject)
+head(T_clusters$crit)
+```
+
+El algoritmo ha agrupado nuestros vectores diarias en 3 grupos.
+
+Para visualizar la asignación de clusters, pero solo en dos dimensiones, usando una pareja aleatoria de Txx:
+
+```{r}
+plot(data_norm[c(40,45)], col = T_clusters$pamobject$clustering)
+
+# below assumes 5 groups, needs fixing to check how many.  Seems to have given 3
+legend("bottomright", legend = paste("Group", 1:5), col = 1:5, pch = 19, bty = "n")
+
+```
+
+Para poder hacer gráficos de los datos de temperatura y velocidad del viento cada hora, funciona mejor si convertimos eso datos en forma "tidy", como que una serie de temperaturas cada hora es una combinación de dos variables: temperatura y hora.  También, para que ggplot les trata en el orden correcto, hay que convertir la "hora" en "factor" con sus niveles, sino ggplot coge los x en orden alfabético.
+
+Visualizando los vectores "medoid", resultado del clustering PAM:
+
+
+```{r}
+medoids_Txx <- as.data.frame(T_clusters$pamobject$medoids)
+medoids_Txx
+
+```
+
+
+
+```{r}
+
+# Use tidyverse to pivot WSR and T data such that we have only columns Time, Temp (or WSR)
+
+
+# Create name vectors for the hourly values to provide to pivot_longer 
+WSRs <- c("WSR0","WSR1","WSR2","WSR3","WSR4","WSR5","WSR6","WSR7","WSR8","WSR9","WSR10","WSR11","WSR12","WSR13","WSR14","WSR15","WSR16","WSR17","WSR18","WSR19","WSR20","WSR21","WSR22","WSR23")
+
+Ts <- c("T0","T1","T2","T3","T4","T5","T6","T7","T8","T9","T10","T11","T12","T13","T14","T15","T16","T17","T18","T19","T20","T21","T22","T23")
+
+
+# Pivot table into tidy versions with only 2 columns.
+#WSRtidy <- WSRdata %>% 
+#  pivot_longer(all_of(WSRs), names_to = "HourofDay", values_to = "WindSpeed")
+
+# First make the Cluster quantity values explicit as column, and add cluster number
+medoids_Txx <- cbind(cluster=c(1,2,3),cluster_quantity=(rownames(medoids_Txx)), medoids_Txx)
+
+medoids_Txx_Tidy <- medoids_Txx %>% 
+  pivot_longer(all_of(Ts), names_to = "HourofDay", values_to = "Temperature", )
+
+#WSRtidy$HourofDay <- factor(WSRtidy$HourofDay, levels = WSRs)
+medoids_Txx_Tidy$HourofDay <- factor(medoids_Txx_Tidy$HourofDay, levels = Ts)
+medoids_Txx_Tidy$cluster <- factor(medoids_Txx_Tidy$cluster)
+```
+
+
+Así, para poder visualizar los valores cada hora, hemos hecho una transformación a los datos de velocidad del viento y temperatura de cada hora.  Con esos cambios, hemos hecho primero unas tablas especificas para cada tipo de medida, de Fecha mas las 24 columnas para cada hora.  Entendemos que todos esos medidas en principio son el mismo variable, y se pueden concatenar todos en la misma columna si modulemos los datos con la hora del día.  
+
+La función pivot_longer() hace exactamente eso, para que podemos ahora producir gráficos que podemos apreciar mejor.
+
+
+```{r}
+ggplot(as.data.frame(medoids_Txx_Tidy), aes(x=HourofDay, y=Temperature, group=cluster)) + geom_point(aes(col=cluster)) + geom_line(aes(col=cluster)) + theme(axis.text.x = element_text(angle=45)) 
+```
+
+Entonces, **pamk()** nos dan 3 clusters de vectores en ese caso, y claramente se distinguen por ser de diferentes niveles de temperaturas.  Es posible que esa categorización cuadra con verano / invierno / primavera y otoño, de hecho.  
+
+Para evaluar la utilidad de los clusters, podemos hacer una tabla comparando el numero asignado de cluster y la clase de ozono, para cada una.  Pero hay que filtrar los clases según la presencia de NAs en los valores Txx para que se quedan alineados.
+
+
+```{r}
+# The desired columns including class
+cols_indices_8h <- c(28:51, 67)
+cols_indices_1h <- c(28:51, 66)
+
+# subset data correctly so the class values are lined up with available non-NA Txx data
+Txx_8h_data <- na.omit(data_norm[cols_indices_8h])
+Txx_1h_data <- na.omit(data_norm[cols_indices_1h])
+
+# create table for 1h
+table(Txx_1h_data$OzoneDay1hPeak, T_clusters$pamobject$clustering)
+
+# create table for 8h
+table(Txx_8h_data$Oz8h, T_clusters$pamobject$clustering)
+
+# or a better confusion matrix
+CrossTable(Txx_8h_data$Oz8h, T_clusters$pamobject$clustering,prop.chisq  = FALSE, prop.c = FALSE, prop.r =FALSE,dnn = c('Reality', 'Prediction'))
+```
+
+Pues, lo que podemos decir es que el cluster 1 es relativamente bueno para excluir los días de ozono, mientras que si hay ozono, debe ser de un cluster 2 o 3.  Eso tiene cierto valor, cuando está integrado con otros variables, supongo.  Si referimos al gráfico justo arriba, se nota que el cluster 1 es el de las temperaturas más bajas de los tres, sin sorpresa.
+
+Para sacar el porcentaje, es muy alta si miramos clusters 2 y 3 conjuntamente, contienen 98,5% (1h) y 99.3% (8h) de los días de ozono, pero también 75% de los días sin ozono.  Podremos entender eso como un "apalancamiento" de ~ 99/75 = 1.3
+
+Hay que acordar que PAM (y Mclust abajo) están funcionando sin conocimiento de las clases de ozono, entonces queda sorprendente que hay el nivel de información extraído así de forma ciega.  Eso dicho, la relación entre cluster 1 y "no ozono" solo nos ayuda en un poco más de un cuarto de los casos.
+
+Hacemos una prueba Kruskal-Wallis para confirmar si piensa que las proporciones de días de ozono son iguales para cada cluster, o  no.  Suponemos que la distribución vista arriba es significativa.
+
+```{r}
+Txx_PAM_8h <- cbind(Oz8h = Txx_8h_data$Oz8h, pamCl = T_clusters$pamobject$clustering)
+
+kruskal.test(Oz8h ~ pamCl, Txx_PAM_8h)
+```
+
+Como esperado, queda rechazada la hipótesis nula que las proporciones son iguales.  
+
+
+#### Investigación: clasificando vectores de temperaturas con MCLUST (no supervisado)
+
+También aquí tenemos que dar un rango de número de grupos al algoritmo.  Usaremos una selección de modelos con dimensiones-volúmenes desiguales solo, porque ese algoritmo es mucho más lento.
+
+Igual que en el paso anterior, estamos omitiendo los registros con NAs de momento para evaluar cual algoritmo usar definitivamente.  Después habrá que investigar si se puede recuperar algunos NAs, antes de hacer la conversión final.
+
+
+
+
+```{r}
+BIC_temp <- mclustBIC(na.omit(data_norm[28:51]), G= 2:10, model=c("VII", "VVI", "VVV"))
+```
+
+```{r}
+plot(BIC_temp)
+```
+
+```{r}
+summary(BIC_temp)
+#mclustModelNames("VVE")
+
+```
+
+
+```{r}
+mclust_temps <- Mclust(na.omit(data_norm[28:51]), G= 2:10, model=c("VII", "VVI", "VVV"))
+```
+
+```{r}
+summary(mclust_temps)
+```
+
+El algoritmo identifica que el modelo VVV (*elipsoidal of varying volume, shape and orientation*) con 5 grupos es el mejor, dando un valor del criterio bayesiano de información más alto.  Vemos también la distribución de los vectores de temperatura en cada cluster.
+
+Se puede visualizar los clusters, pero con 24 atributos resulta intensivo para el procesador, por un resultado poco apreciable.
+
+```{r}
+plot(mclust_temps, what="classification")
+```
+
+Podemos ver, numéricamente, los centros de cada cluster en términos de cada temperatura:
+
+```{r}
+mclust_temps$parameters$mean
+```
+
+y las clasificaciones en clusters:
+
+```{r}
+head(mclust_temps$classification, n=40)
+```
+
+Para intentar evaluar la clasificación y su utilidad hacia la clase de ozono, hacemos una tabla para cada tipo de día de ozono:
+
+```{r}
+
+table(Txx_1h_data$OzoneDay1hPeak,  mclust_temps$classification)
+
+
+table(Txx_8h_data$Oz8h,  mclust_temps$classification)
+```
+
+Aquí, tenemos una distribución de días de ozono por todos los clusters, y así no da la impresión de ser útil.  Los resultados más sencillas de PAM parecen mejores.
+
+Pero, en porcentajes, tenemos 85% (1h) y 85% (8h) de los días de ozono en clusters 2 y 5.  Una vez cuantificado, parece algo mejor.
+Tienen en comparación 50% de los casos sin ozono.
+Usando el "apalancamiento" anterior de nuevo, digamos un factor de ~ 85/50 = 1.7, mejor que el PAM.
+
+Con ese resultado, también hay que probar, por si acaso, los G de cada lado del valor 5 elegido automáticamente, por ejemplo el G=4 y 6.
+
+Brevemente:
+
+```{r}
+mclust_VVV4_temps <- Mclust(na.omit(data_norm[28:51]), G= 4, model=c("VVV"))
+mclust_VVV6_temps <- Mclust(na.omit(data_norm[28:51]), G= 6, model=c("VVV"))
+
+# Confusion tables for VVV G=4
+table(Txx_1h_data$OzoneDay1hPeak,  mclust_VVV4_temps$classification)
+table(Txx_8h_data$Oz8h,  mclust_VVV4_temps$classification)
+
+# Confusion tables for VVV G=6
+table(Txx_1h_data$OzoneDay1hPeak,  mclust_VVV6_temps$classification)
+table(Txx_8h_data$Oz8h,  mclust_VVV6_temps$classification)
+```
+
+VVV 4: En clusters 3 y 4, hay:
+
+* 90% (1h)   y 88% (8h)
+* 70% de los sin ozono
+* "apalancamiento" de 1.27
+
+VVV 6: En clusters 1 y 2, hay:
+
+* 82% (1h)   y 81% (8h)
+* 43-44% de los sin ozono
+* "apalancamiento" de 1.88
+
+Se nota que estamos ganando por la segregación mayor cuando tenemos más clusters, no por una mejora en distinción de los casos de ozono.  Por decir, que estamos mejorando la *precisión*.
+
+Como que vemos mejores con más grupos, y la curva de BIC es muy plana, probamos con G 7 y 8.
+
+Brevemente:
+
+```{r}
+mclust_VVV7_temps <- Mclust(na.omit(data_norm[28:51]), G= 7, model=c("VVV"))
+mclust_VVV8_temps <- Mclust(na.omit(data_norm[28:51]), G= 8, model=c("VVV"))
+
+# Confusion tables for VVV G=7
+table(Txx_1h_data$OzoneDay1hPeak,  mclust_VVV7_temps$classification)
+table(Txx_8h_data$Oz8h,  mclust_VVV7_temps$classification)
+
+# Confusion tables for VVV G=8
+table(Txx_1h_data$OzoneDay1hPeak,  mclust_VVV8_temps$classification)
+table(Txx_8h_data$Oz8h,  mclust_VVV8_temps$classification)
+```
+
+VVV 7: En clusters 1, 2 y 6, hay:
+
+* 78% (1h)   y 74% (8h)
+* 39-41% de los sin ozono
+* "apalancamiento" de 1.9
+
+VVV 8: En clusters 3 y 8, hay:
+
+* 76% (1h)   y 77% (8h)
+* 29-31% de los sin ozono
+* "apalancamiento" de 2.5
+
+Seguimos ganando más dividiendo los de sin ozono más que perdemos en la recogida de días de ozono, con más grupos.  Ese último con G 8 parece muy bien, principalmente por la distribución de los días de ozono en 2 y no 3 de los clusters.
+
+Para confirmar con una prueba Kruskal-Wallis, G=8:
+
+```{r}
+Txx_MCL_G8_8h <- cbind(Oz8h = Txx_8h_data$Oz8h, MCL_G8_Cl = mclust_VVV8_temps$classification)
+
+kruskal.test(Oz8h ~ MCL_G8_Cl, Txx_MCL_G8_8h)
+```
+
+Así confirmamos que las proporciones son significativamente distintos a cero.
+
+
+#### Investigación: clasificando vectores de temperaturas con DBSCAN (no supervisado)
+
+Para usar una clasificación basada en densidad, tenemos que 
+
+1. Seleccionar un valor k para cuantos vecinos considerar para medir las distancias.
+2. De la curva de distancias, estimamos un punto de maxima eficiencia al "codo" de la curva.  Así tenemos un valor de radio epsilon.
+3. Finalmente producir el modelo, con los parametros k usado, y el epsilon elegido.
+
+```{r}
+kNNdistplot(na.omit(data_norm[28:51]), k=9)
+```
+
+Estimamos un valor epsilon de ~ 0.18 por k=9.
+
+```{r}
+dbscan(na.omit(data_norm[28:51]), eps = 0.18, minPts = 9)
+```
+
+Pues eso no ha funcionado !  Solo considera que tiene un cluster.  Cambiamos a un k mayor para probar.
+
+```{r}
+kNNdistplot(na.omit(data_norm[28:51]), k=21)
+
+```
+
+```{r}
+dbscan(na.omit(data_norm[28:51]), eps = 0.22, minPts = 21)
+
+```
+
+Igualmente, no es de ayuda.  Seguramente es sintomático de puntos de observación sin separación visible.
+
+
+#### Investigación: clasificando vectores de temperaturas con SVM (supervisado)
+
+Ahora probaremos un algoritmo supervisado para usar la información disponible del clase de ozono, para ver si podemos mejorar la clasificación.  Usaremos *support-vector machine*.  Eso es un experimento, como que la idea original para la vectorización de las temperaturas y velocidades del viento no era de usar la información de los clases y solo basar los clusters en las características de los vectores mismos.
+
+Necesitemos los datos de los vectores de temperatura, solos, más la clase de ozono.  Los tenemos ya construidos en Txx_8h_data y Txx_1h_data.
+Solo tenemos que convertir la clase en factor.
+
+```{r}
+Txx_8h_data$Oz8h <- as.factor(Txx_8h_data$Oz8h)
+Txx_1h_data$OzoneDay1hPeak <- as.factor(Txx_1h_data$OzoneDay1hPeak)
+
+```
+
+Probamos ahora a crear el modelo.  Hay distintas tipos de tipo de kernel a probar.
+
+```{r}
+svmfit_Txx_8h <- svm(Oz8h ~., data=Txx_8h_data, type="C-classification", kernel="polynomial", cost = 5)
+```
+
+```{r}
+print(svmfit_Txx_8h)
+```
+
+Cuantos clusters ha creado ?  
+
+```{r}
+svmfit_Txx_8h$nclasses
+```
+
+Entonces solo han creado dos clusters...  A ver qué dice una tabla de confusiónÑ
+
+```{r}
+table(Txx_8h_data$Oz8h, svmfit_Txx_8h$fitted)
+
+```
+
+Entonces, no parece útil, se ha clasificado todos los puntos aparte de 2 en el primer cluster.
+
+De hecho, probando los 4 tipos de kernel resulta que ninguno puede dar un resultado útil.  
+
+#### Método elegido para vectores de temperatura  
+
+De lo que hemos probado, usando el concepto de cuantos ocasiones de ozono podemos aislar comparado a la porción de días sin ozono que llevamos en los mismos clusters, el MClust queda mejor.  Usaremos el modelo VVV con G=8.
+
+
+
+#### Investigación: clasificando vectores de velocidades del viento con PAM (no supervisado)
+
+Repetimos el mismo conjunto de investigaciones ahora para los WSRxx, para o confirmar el uso de PAM o otro método.
+
+
+```{r}
+WSR_clusters <- pamk(na.omit(data_norm[2:25]), krange = 2:10, criterion = "ch", usepam = TRUE)
+```
+
+```{r}
+head(WSR_clusters$pamobject)
+head(WSR_clusters$crit)
+```
+
+El algoritmo ha agrupado nuestros vectores diarias en 2 grupos.
+
+Para visualizar la asignación de clusters, pero solo en dos dimensiones, usando una pareja aleatoria de WSRxx:
+
+```{r}
+plot(data_norm[c(4,17)], col = WSR_clusters$pamobject$clustering)
+
+# below assumes 5 groups, needs fixing to check how many.  Seems to have given 3
+legend("bottomright", legend = paste("Group", 1:5), col = 1:5, pch = 19, bty = "n")
+
+```
+
+Visualizando los vectores "medoid", resultado del clustering PAM:
+
+
+```{r}
+medoids_WSRxx <- as.data.frame(WSR_clusters$pamobject$medoids)
+medoids_WSRxx
+
+```
+
+
+
+```{r}
+
+# Use tidyverse to pivot WSR and T data such that we have only columns Time, Temp (or WSR)
+
+# Create name vectors for the hourly values to provide to pivot_longer 
+WSRs <- c("WSR0","WSR1","WSR2","WSR3","WSR4","WSR5","WSR6","WSR7","WSR8","WSR9","WSR10","WSR11","WSR12","WSR13","WSR14","WSR15","WSR16","WSR17","WSR18","WSR19","WSR20","WSR21","WSR22","WSR23")
+
+# First make the Cluster quantity values explicit as column, and add cluster number
+medoids_WSRxx <- cbind(cluster=c(1,2),cluster_quantity=(rownames(medoids_WSRxx)), medoids_WSRxx)
+
+medoids_WSRxx_Tidy <- medoids_WSRxx %>% 
+  pivot_longer(all_of(WSRs), names_to = "HourofDay", values_to = "WindSpeeds", )
+
+medoids_WSRxx_Tidy$HourofDay <- factor(medoids_WSRxx_Tidy$HourofDay, levels = WSRs)
+medoids_WSRxx_Tidy$cluster <- factor(medoids_WSRxx_Tidy$cluster)
+```
+
+
+Así, para poder visualizar los valores cada hora, hemos hecho una transformación a los datos de velocidad del viento y temperatura de cada hora.  Con esos cambios, hemos hecho primero unas tablas especificas para cada tipo de medida, de Fecha mas las 24 columnas para cada hora.  Entendemos que todos esos medidas en principio son el mismo variable, y se pueden concatenar todos en la misma columna si modulemos los datos con la hora del día.  
+
+La función pivot_longer() hace exactamente eso, para que podemos ahora producir gráficos que podemos apreciar mejor.
+
+
+```{r}
+ggplot(as.data.frame(medoids_WSRxx_Tidy), aes(x=HourofDay, y=WindSpeeds, group=cluster)) + geom_point(aes(col=cluster)) + geom_line(aes(col=cluster)) + theme(axis.text.x = element_text(angle=45)) 
+```
+
+Entonces, **pamk()** nos dan 2 clusters de vectores en ese caso, y claramente se distinguen por ser de diferentes niveles de vientos.  Es un poco decepcionante que no ha podido identificar más patrones típicas.  
+
+Para evaluar la utilidad de los clusters, podemos hacer una tabla comparando el numero asignado de cluster y la clase de ozono, para cada una.  Pero hay que filtrar los clases según la presencia de NAs en los valores WSRxx para que se quedan alineados.
+
+
+```{r}
+# The desired columns including class
+cols_indices_8h_WSR <- c(2:25, 67)
+cols_indices_1h_WSR <- c(2:25, 66)
+
+# subset data correctly so the class values are lined up with available non-NA Txx data
+WSRxx_8h_data <- na.omit(data_norm[cols_indices_8h_WSR])
+WSRxx_1h_data <- na.omit(data_norm[cols_indices_1h_WSR])
+
+# create table for 1h
+table(WSRxx_1h_data$OzoneDay1hPeak, WSR_clusters$pamobject$clustering)
+
+# create table for 8h
+table(WSRxx_8h_data$Oz8h, WSR_clusters$pamobject$clustering)
+
+# or a better confusion matrix
+CrossTable(WSRxx_8h_data$Oz8h, WSR_clusters$pamobject$clustering,prop.chisq  = FALSE, prop.c = FALSE, prop.r =FALSE,dnn = c('Reality', 'Prediction'))
+```
+
+Quedamos con el hecho que la segunda cluster funciona mejor para incluir los días de ozono.
+
+Tenemos 97% (1h) y 91% (8h) en cluster 2, por una proporción de los sin ozono de 55%, dando un ratio de "apalancamiento" de ~94/55 = 1.7.  Se puede notar que el cluster 2 tiene velocidades del viento más bajos, correspondiendo con un entendimiento físico del fenómeno, que debería estar menor cuando el viento dispersa los contaminantes precursores.
+
+
+
+Como para las temperaturas, hacemos una prueba Kruskal-Wallis para confirmar si piensa que las proporciones de días de ozono son iguales para cada cluster, o  no.  Suponemos que la distribución vista arriba es significativa.
+
+```{r}
+WSRxx_PAM_8h <- cbind(Oz8h = WSRxx_8h_data$Oz8h, pamCl = WSR_clusters$pamobject$clustering)
+
+kruskal.test(Oz8h ~ pamCl, WSRxx_PAM_8h)
+```
+
+Como esperado, queda rechazada la hipótesis nula que las proporciones son iguales.  Entonces tenemos algo de información proporcionado con esa clasificación.
+
+
+#### Investigación: clasificando vectores de vientos con MCLUST (no supervisado)
+
+También aquí tenemos que dar un rango de número de grupos al algoritmo.  Usaremos una selección de modelos con dimensiones-volúmenes desiguales solo, porque ese algoritmo es mucho más lento.
+
+Igual que en el paso anterior, estamos omitiendo los registros con NAs de momento para evaluar cual algoritmo usar definitivamente.  Después habrá que investigar si se puede recuperar algunos NAs, antes de hacer la conversión final.
+
+
+```{r}
+BIC_WSR <- mclustBIC(na.omit(data_norm[2:25]), G= 2:10, model=c("VII", "VVI", "VVV"))
+```
+
+```{r}
+plot(BIC_WSR)
+```
+
+```{r}
+summary(BIC_WSR)
+```
+
+Comparado a la situación con las temperaturas, tenemos un comportamiento distinto, favoreciendo G´s de 3 solo, y la curva del VVV cae rápidamente.  Podemos priorizar un modelo de VVV, y probar G de 2 a 4.
+
+```{r}
+mclust_G3_WSR <- Mclust(na.omit(data_norm[2:25]), G= 3, model=c("VVV"))
+
+
+mclust_G2_WSR <- Mclust(na.omit(data_norm[2:25]), G= 2, model=c("VVV"))
+mclust_G4_WSR <- Mclust(na.omit(data_norm[2:25]), G= 4, model=c("VVV"))
+
+```
+
+```{r}
+summary(mclust_G3_WSR)
+```
+
+Se puede visualizar los clusters, pero con 24 atributos resulta intensivo para el procesador, por un resultado poco apreciable.
+
+```{r}
+plot(mclust_G3_WSR, what="classification")
+```
+
+Podemos ver, numéricamente, los centros de cada cluster en términos de cada velocidad:
+
+```{r}
+mclust_G3_WSR$parameters$mean
+```
+
+y las clasificaciones en clusters:
+
+```{r}
+head(mclust_G3_WSR$classification, n=40)
+```
+
+Para intentar evaluar la clasificación y su utilidad hacia la clase de ozono, hacemos una tabla para cada tipo de día de ozono:
+
+```{r}
+# Displaying tables for G=2
+table(WSRxx_1h_data$OzoneDay1hPeak,  mclust_G2_WSR$classification)
+table(WSRxx_8h_data$Oz8h,  mclust_G2_WSR$classification)
+
+# for G=3
+table(WSRxx_1h_data$OzoneDay1hPeak,  mclust_G3_WSR$classification)
+table(WSRxx_8h_data$Oz8h,  mclust_G3_WSR$classification)
+
+# for G=4
+table(WSRxx_1h_data$OzoneDay1hPeak,  mclust_G4_WSR$classification)
+table(WSRxx_8h_data$Oz8h,  mclust_G4_WSR$classification)
+```
+
+Aquí, tenemos una distribución de días de ozono mayor en el cluster 1, y de hecho parece funcionar mejor que en el caso de los temperaturas.  Tenemos 82% (1h) y 73% (8h) en el cluster 1, comparado con 36% de los sin ozono, por un "apalancamiento" de ~ 2.1.
+
+Haciendo lo mismo con G=4, tenemos 91% y 80% entre los clusters 1 y 2, comparado con 40-42% de los sin ozono, por un "apalancamiento" de ~ 2.07.  Da la impresión de que estamos penalizado incluyend el cluster 2.
+
+Con G=2, tenemos 89% y 88% en el cluster 2, comparado con 71% de los sin ozono, por un "apalancamiento" de ~ 1.2.
+
+Parece valer la pena probar con G=5 y 6 antes de proceder, aunque la curva de BIC está bajando:
+
+
+```{r}
+mclust_G5_WSR <- Mclust(na.omit(data_norm[2:25]), G= 5, model=c("VVV"))
+mclust_G6_WSR <- Mclust(na.omit(data_norm[2:25]), G= 6, model=c("VVV"))
+
+# for G=5
+table(WSRxx_1h_data$OzoneDay1hPeak,  mclust_G5_WSR$classification)
+table(WSRxx_8h_data$Oz8h,  mclust_G5_WSR$classification)
+
+# for G=6
+table(WSRxx_1h_data$OzoneDay1hPeak,  mclust_G6_WSR$classification)
+table(WSRxx_8h_data$Oz8h,  mclust_G6_WSR$classification)
+```
+
+Aquí es un poco más difícil elegir cuantos clusters considerar en el calculo.  Evidentemente, estamos usando nuestro juicio personal aquí evaluando algo que un algoritmo posiblemente no haría igual.
+
+VVV 5: Si contamos los clusters 1 y 2, hay:
+
+* 67% (1h)   y 67% (8h)
+* 34% de los sin ozono
+* "apalancamiento" de 1.97
+
+Pero, si contamos clusters 1,2 y 3, estaría peor.
+
+VVV 6: En clusters 1 y 4, hay:
+
+* 83% (1h)   y 69% (8h)
+* 29-30% de los sin ozono
+* "apalancamiento" de 2.53
+
+Seguimos ganando más dividiendo los de sin ozono más que perdemos en la recogida de días de ozono, con más grupos.  Ese último con G 6 parece muy bien, principalmente por la distribución de los días de ozono en 2 y no 3 de los clusters.  De nuevo es difícil saber cuando parar, pero al menos aquí con los WSRs la curva de la BIC está bajando más fuertemente y no nos impulsa mucho para seguir probando.
+
+
+Parece que G=6 sería un modelo útil.  Probamos de nuevo un test de hipótesis usando Kruskal-Wallis, por G=6:
+
+```{r}
+WSRxx_MCL_G6_8h <- cbind(Oz8h = WSRxx_8h_data$Oz8h, MCL_G6_Cl = mclust_G6_WSR$classification)
+
+kruskal.test(Oz8h ~ MCL_G6_Cl, WSRxx_MCL_G6_8h)
+```
+
+Eso confirma que hay que rechazar la hipótesis de que la proporción de días de ozono es igual para los dos clusters.
+
+#### Método elegido para vectores de velocidad  
+
+No repetiremos aquí las pruebas con DBSCAN o SVM, por la falta de utilidad que han demostrado con las temperaturas.
+
+Dejando que seguimos las medidas de "apalancamiento", parece razonable usar MClust con VVV, G=6.
+
+
+
+
+
+
+
+
+
+## Limpieza de valores NA
+
+Aquí estamos preparados para proceder con trabajos de rescate de todos los valores NA, que podemos tratar de varias maneras.  
+
+Como en cada trabajo de limpieza de datos, no es una cosa sencilla elegir como proceder.  No se sabe de forma precisa como imputación de valores NA podría influir los resultados posteriores de modelización, si no se hace de forma iterativa.  
+
+En el contexto del trabajo actual, el autor tiene esfuerzos anteriores con esos datos, que eran sin imputación, y ha sido difícil producir modelos útiles.  La modelización tiene más reto también por la falta de días de ozono alto en los datos, son un resultado escaso y la poca frecuencia da dificultades de apercebir como predecirles.
+
+Entonces, haremos el máximo para imputar valores NA, en un intento de mejorar la modelización.
+
+Según el contexto, usaremos una variedad de métodos:
+
+* kNN con otros atributos específicos, cuando tiene sentido
+* sustitución con valores medias
+* sustitución con valores aproximativas por una linea entre datos horarios existentes
+* distancia mínima de un centro de cluster, para los vectores de datos horarios parciales
+
+El enfoque tiene que ser rescatar la mayor cantidad de registros con ozono alto.  Si elegimos eliminar filas, mejor que sean de ozono bajo.
+
+### Vista general de valores NA
+
+Primero, miramos cuantos valores NA tienen cada fila con una función de búsqueda y un histograma.
+
+
+```{r}
+count_nas_in_row <- function(vect){
+    n = sum(is.na(vect))
+    if (n==0) {
+      return (NA)
+    }
+    else return (n)
+}
+
+# sweep by rows (margin = 1)
+na_count <- apply(data_norm, MARGIN=1, count_nas_in_row)
+
+# histogram count of NAs per row
+# Note, zeros will be excluded because are "NA" instead from function above
+hist(na_count, breaks=50, xlab="Cuantos variables son NA en cada fila", ylab="Cuentas", main="Cuantos variables en cada fila son NA, excluyendo filas con cero NA")
+```
+
+Vemos que hay muchas filas que faltan 2, 12, 25 o 26, y 51 variables.  Entonces el comportamiento es que faltan grupos de variables a la vez, parece ser.
+
+Un ejemplo abajo de una fila que falta 51 variables, y vemos que falta todos los WSR horarios, los T horarios, por consecuencia los valores máximas y medias de cada también.  No hay nada que se puede hacer contra eso.  Solo es una cuestión de cuantos tales filas afectan filas con ozono, como que son poco frecuente y por tanto, valiosos.
+
+```{r}
+head(na_count[which(na_count == 51)])
+data_norm[1634, ]
+```
+
+Repetimos la busqueda, pero solo para días de ozono:
+
+```{r}
+count_nas_in_row_if_Oz <- function(vect){
+    if (rev(vect)[1] == 1 | rev(vect)[2] == 1) {
+      n = sum(is.na(vect))
+      if (n==0) {
+        return (NA)
+      }
+      else return (n)
+    }
+    else return (NA)
+}
+
+# sweep by rows (margin = 1)
+na_count_oz <- apply(data_norm, MARGIN=1, count_nas_in_row_if_Oz)
+
+# histogram count of NAs per row
+# Note, zeros will be excluded because are "NA" instead from function
+hist(na_count_oz, breaks=50, xlab="Cuantos variables son NA en cada fila", ylab="Cuentas", main="Cuantos variables en cada fila son NA, solo para días de ozono")
+```
+
+Muchos menos, pero esos son los que necesitan más que los otros esfuerzos de rescate.
+
+Por ejemplo, aquí solo hay un caso de 26 faltando, comparado a muchos (aprox. 80) en los días sin ozono.
+
+Investigamos los casos.
+Primero, registros de ozono que faltan solo dos campos:
+
+```{r}
+data_norm[which(na_count_oz == 2), ]
+```
+
+Esos casos faltan todos una pareja de Uxx, Vxx, de la misma altitud.  Esos son direcciones de viento, y no hay manera razonable no logística de remplazarles.  Se podría usar inferencia por kNN para crear sustitutos, pero es difícil saber el impacto sobre los modelos posteriores.  Lo haremos (para todas las filas) y aceptaremos el riesgo, con el beneficio presunto de rescatar al menos esos 11 casos de ozono.
+
+### Inferencia valores NA para variables Uxx, Vxx con kNN
+
+Haremos inferencia usando kNN para rellenar valores perdidos Uxx, Vxx.  Se podría hacer un argumento de separar las filas en días de ozono y de no ozono, antes de hacer el paso, pero no veo la utilidad, como que no tienen circunstancias totalmente independientes.  Usaremos un valor modesto de k = 5, que dará, presuntamente, un rango más amplio de valores imputados, por ser más granular.
+
+Tampoco podemos decir bien cuales otras variables tomar en cuenta cuando hacemos el kNN().  Por defecto usará todos los atributos.  Para quedar con una solución mínima, usaré solo las otras variables Uxx, Vxx, y no todas.
+
+Nota: se usara el kNN() del paquete VIM, usando la distancia Gower.
+
+```{r}
+# First copy dataframe into new name for safety
+data_cleaned <- data_norm
+```
+
+Tenemos de momento 180 en cada U85 y V85, por ejemplo:
+
+```{r}
+summary(data_cleaned$U85)
+summary(data_cleaned$V85)
+
+```
+
+Cuantos podremos imputar así?  Para saber, tenemos que verificamos cuantos filas solo falta una pareja de Uxx, Vxx y no más.  Podemos usar la función hecho arriba, ¨count_nas_in_row():
+
+```{r}
+# check how many pairs of Uxx, Vxx are missing
+hist(apply(data_norm[,c("U70", "V70", "U50", "V50", "U85", "V85")], MARGIN=1, count_nas_in_row), main="Cuantos Uxx, Vxx faltan en la misma fila", xlab="Número de parejas valores Uxx o Vxx faltando en una fila", ylab = "Cuenta de filas")
+
+```
+
+Entonces, podemos corregir >150 filas de la forma planificada, pero ~ 130 otras filas tienen o 4 o 6 valores NAs en los Uxx/Vxx y no se puede imputar los valores que faltan.
+
+La idea es de imputamos los dos a la vez, haciendo referencia solo a los otros Uxx, Vxx.
+
+Haciendo unas pruebas antes, se nota que kNN() imputa valores incluso cuando no hay otros valores de Uxx, Vxx.  Injerta valores que parecen cerca de la media del valor en cuestión, pero no exactamente.  Para evitar ese fenomeno, cuyo impacto no se puede determinar, se dará un conjunto reducido a kNN(), de solo las filas que queremos, cada vez.  Por decir, cuando imputamos V85, U85, por ejemplo, solo daremos fila que contengan valores reales para el resto de los Uxx, Vxx.
+
+```{r}
+
+# We wanted to isolate all row indices where we do have all values for U50, V50, U70, V70
+# for both missing and not missing U85, V85, to impute these two variables, only when other 4 variables exist.
+U85V85.indices.to.impute <- which(!is.na(data_cleaned$U50) 
+                                  & !is.na(data_cleaned$U70) 
+                                  & !is.na(data_cleaned$V50) 
+                                  & !is.na(data_cleaned$V70)
+                                  )
+
+U85V85.imputed.values <- kNN(data_cleaned[U85V85.indices.to.impute, c("U70", "V70", "U50", "V50", "U85", "V85")], 
+                             variable=c("U85", "V85"), k=5)
+
+head(U85V85.imputed.values[U85V85.imputed.values$U85_imp == TRUE, ])
+
+#data_cleaned_test <- kNN(data_cleaned[,c("U70", "V70", "U50", "V50", "U85", "V85")], variable=c("U85", "V85"), k=5)
+#data_cleaned <- kNN(data_cleaned[,c("U70", "V70", "U50", "V50")], variable="V85", k=5)
+
+
+```
+
+Ahora podemos hacer lo mismo para las otras dos parejas.  Al final, incorporaremos los valores imputados usando los indicios respectivos.  No lo hacemos antes del próximo imputación, sino estaremos imputamos valores a partir de otros valores también imputados.  No estaremos incorporando las columnas añadidas por kNN() que indica cuales son imputados.
+
+
+```{r}
+
+# We wanted to isolate all row indices where we do have all values for U50, V50, U85, V85
+# for both missing and not missing U70, V70, to impute these two variables, only when other 4 variables exist.
+U70V70.indices.to.impute <- which(!is.na(data_cleaned$U50) 
+                                  & !is.na(data_cleaned$U85) 
+                                  & !is.na(data_cleaned$V50) 
+                                  & !is.na(data_cleaned$V85)
+                                  )
+
+U70V70.imputed.values <- kNN(data_cleaned[U70V70.indices.to.impute, c("U70", "V70", "U50", "V50", "U85", "V85")], 
+                             variable=c("U70", "V70"), k=5)
+
+head(U70V70.imputed.values[U70V70.imputed.values$U70_imp == TRUE, ])
+
+#data_cleaned_test <- kNN(data_cleaned[,c("U70", "V70", "U50", "V50", "U85", "V85")], variable=c("U85", "V85"), k=5)
+#data_cleaned <- kNN(data_cleaned[,c("U70", "V70", "U50", "V50")], variable="V85", k=5)
+
+
+```
+
+```{r}
+
+# We wanted to isolate all row indices where we do have all values for U70, V70, U85, V85
+# for both missing and not missing U50, V50, to impute these two variables, only when other 4 variables exist.
+U50V50.indices.to.impute <- which(!is.na(data_cleaned$U70) 
+                                  & !is.na(data_cleaned$U85) 
+                                  & !is.na(data_cleaned$V70) 
+                                  & !is.na(data_cleaned$V85)
+                                  )
+
+U50V50.imputed.values <- kNN(data_cleaned[U50V50.indices.to.impute, c("U70", "V70", "U50", "V50", "U85", "V85")], 
+                             variable=c("U50", "V50"), k=5)
+
+head(U50V50.imputed.values[U50V50.imputed.values$U50_imp == TRUE, ])
+
+
+```
+
+Ahora incorporamos los valores imputados remplazados las parejas de NAs.
+
+```{r}
+
+data_cleaned[U85V85.indices.to.impute, c("U85", "V85")] <- U85V85.imputed.values[, c("U85", "V85")]
+
+data_cleaned[U70V70.indices.to.impute, c("U70", "V70")] <- U70V70.imputed.values[, c("U70", "V70")]
+
+data_cleaned[U50V50.indices.to.impute, c("U50", "V50")] <- U50V50.imputed.values[, c("U50", "V50")]
+
+```
+
+Y verifiquemos ahora como estamos de cantidades NA en esos variables Uxx, Vxx:
+
+```{r}
+# check how many pairs of Uxx, Vxx are missing after imputation with kNN
+hist(apply(data_cleaned[,c("U70", "V70", "U50", "V50", "U85", "V85")], MARGIN=1, count_nas_in_row), main="Cuantos Uxx, Vxx faltan en la misma fila después de imputación", xlab="Número de parejas valores Uxx o Vxx faltando en una fila", ylab = "Cuenta de filas")
+
+
+
+```
+
+Entonces, hemos arreglado todos las parejas de dos que faltaban, como esperado.  Nos quedamos con filas que tienen o 4 o 6 valores NAs en lo Uxx, Vxx, por tener menos apoyo en valores reales para imputar los que faltan.
+
+```{r}
+# check how many pairs of Uxx, Vxx are missing after imputation with kNN
+hist(apply(data_cleaned[,c("U70", "V70", "U50", "V50", "U85", "V85", "OzoneDay1hPeak", "Oz8h")], MARGIN=1, count_nas_in_row_if_Oz), main="Cuantos Uxx, Vxx faltan en la misma fila después de imputación,\nen días de ozono alto", xlab="Número de parejas valores Uxx o Vxx faltando en una fila", ylab = "Cuenta de filas")
+```
+
+Entonces tenemos 7 casos así en días de ozono.  No olvidamos que puede ser que más que esos variables faltan además que los Uxx, Vxx.
+
+
+### Inferencia valores NA para variables WSRxx, Txx por funciones
+
+Repetimos la verificación de cuantos NAs existen ahora en filas de días de ozono, para planificar los próximos pasos:
+
+```{r}
+# sweep by rows (margin = 1) on Cleaned data frame
+na_count_oz <- apply(data_cleaned, MARGIN=1, count_nas_in_row_if_Oz)
+
+# histogram count of NAs per row
+# Note, zeros will be excluded because are "NA" instead from function
+hist(na_count_oz, breaks=50, xlab="Cuantos variables son NA en cada fila", ylab="Cuentas", main="Cuantos variables en cada fila son NA, solo para días de ozono")
+```
+
+Cuales variables faltan por el caso de 2, 4, 7, o 8 NAs?
+
+```{r}
+table(na_count_oz)
+data_cleaned[which(na_count_oz == 2), ]
+data_cleaned[which(na_count_oz == 4), ]
+data_cleaned[which(na_count_oz == 7), ]
+data_cleaned[which(na_count_oz == 8), ]
+
+```
+
+Aquí tenemos:
+
+* 2NAs: un caso con un valor de WSR6 y T6 que faltan
+* 4NAs: dos casos de dos parejas de Uxx, Vxx, pero también dos casos de dos horas de WSR o T que faltan.
+* 7NAs: dos casos de datos diarios T70, U70, V70, T50, RH50, U50, V50 que faltan
+* 8NAs: un caso que falta T0-T7, y otro que falta WSR0-WSR7
+
+Que podemos hacer:
+
+* Para imputar valores horarios de velocidad del viento (WSR), podremos remplazarlo, por ejemplo, por la media del WSR del día, el WSR_AV.  Notamos que (verificado por separado), los valores WSR_AV solo se basan en los valores disponibles en los datos.  Por tanto, si hay 22 WSRxx, el valor de WSR_AV es la media de esos 22 valores, no tiene ninguna información sobre los valores que faltan.
+
+* Para imputar valores horarios de las temperaturas, que faltan en horas intermedias del día, podremos hacer una linea recta de regresión (no estadística), entre los valores que existen a los margenes del hueco donde falta.  Pero, para que sea razonable, no debemos imputar así a través un hueco que incluye los valores más altos del día, digamos desde las T13 hasta las T16.  Sino, estaremos cortando la parte alta de la curva presunta de temperatura para ese día.  Para tratar huecos allí, podremos en lugar repetir el valor más alto de los margenes.  Por ejemplo, si falta T14, T15, usamos el más alto de T13, T16.  Tendremos que escribir una función para hacer esos cálculos.  Tenemos la temperatura máxima todavía pero no la media, entonces no hay que actualizarla.  Igualmente, si tenemos un hueco que ya empieza con T00 o acaba con T23, con la lógica aquí, no hay manera de tratarlo (sin hacer referencia a datos del día previa).
+
+* Valores de temperaturas horarias que faltan desde T0 o hasta T23, solo podemos tratar después de crear los clusters de vectores de temperatura, si se puede medir la distancias hacía los centros de cada cluster, por los atributos que tenemos a disposición.  Eso haremos en pasos posteriores.
+
+#### Imputación de WSRxx
+
+```{r}
+# Process WSR hourly data, per register, to overwrite NAs with average daily WSR
+wsr_inference <- function(register) {
+  # Step through all WSRxx values
+  for (xx in (0:23)) {
+    # If a WSRxx is NA, replace with WSR_AV
+    if (is.na(register[[glue("WSR{xx}")]])) {
+      register[[glue("WSR{xx}")]] <- register[["WSR_AV"]]
+    }
+  }
+  return (register)
+}
+```
+
+Notamos que la función usará WSR_AV de valor NA en el caso de una fila sin ninguna información de WSR, y por tanto, no lo cambiará.
+
+```{r}
+# Example row with missing WSR00-WSR07
+data_cleaned[270, ]
+```
+
+
+```{r}
+# Apply WSR function per row, overwriting each row with inferred WSR data when NAs exist
+for (i in (1: nrow(data_cleaned))) {
+  data_cleaned[i, ] <- wsr_inference(data_cleaned[i, ])
+}
+
+```
+
+```{r}
+# Confirm values replaced with WSR_AV
+data_cleaned[270, ]
+```
+
+#### Imputación Txx
+
+Ahora creamos la función para procesar los valores Txx según lo que hemos descrito antes.
+
+```{r}
+temp_inference <- function(register) {
+  left <- c(NA,NA)      # Ongoing possible left side of hole
+  right <- c(NA,NA)     # Confirmed right side of hole
+  hole <- FALSE   # Does current register contain a hole
+  to.be.fixed <- FALSE  # Can current register's hole be remedied
+  
+  # Exploratory for loop, to look for valid holes
+  for (xx in (0:23)) {
+    label <- glue("T{xx}")
+    # store current value as tuple of position and value
+    current <- as.numeric(c(xx, register[[label]]))
+
+    if (is.na(current[2])) {
+      if (!hole & xx != 0 & xx != 23) {
+        # if current is NA, hole is not previously flagged, 
+        # and hole is not at T00 or T23, we've found the start of a possibly treatable hole
+        if (!is.na(left[2])) {
+          # However, don't recognize as hole unless we've already identified a valid left side
+          hole <- TRUE
+        }
+      }
+      # If NAs starting at T00 or going to T23, don't recognize as hole
+    }
+    else { 
+      # If Txx not NA, check if possible left or right side of a hole
+      if (hole) {
+        if (is.na(right[2])) {
+          # if we'd been in a hole and no right value found yet, we've found the right side of hole
+          right <- current
+          # mark treatable hole
+          to.be.fixed <- TRUE
+        }
+        # In case right is not NA, it means we've already found the right side of the hole.
+      }
+      else {
+        # if no hole yet identified, then drag along current value as possible left side of hole
+        left <- current
+      }
+    }
+  }  # end of exploratory for loop
+
+  # Loop to fix identified hole to be fixed.
+  if (to.be.fixed) {
+    # how many points to bridge
+    gap.size = right[1] - left[1] - 1
+    temp.fill.step = round((right[2] - left[2]) / (gap.size+1), 3)
+    left.edge <- left[1]
+    right.edge <- right[1]
+    
+    if (right.edge<14 | left.edge>15) {
+      # if gap does not cover any of T13-T16 inclusive, then use linear model
+      for (i in (1:gap.size)) {
+        xx <- ((left.edge+1):(right.edge-1))[i]
+        label <- glue("T{xx}")
+        register[[label]] <- as.numeric(left[2] + i*temp.fill.step)
+      }
+    }
+    else if (left.edge>=12 & right.edge<=17) {
+      # if gap is only in 13;16 inclusive, fill with T_PK value
+      for (i in (1:gap.size)) {
+        xx <- ((left.edge+1):(right.edge-1))[i]
+        label <- glue("T{xx}")
+        register[[label]] <- as.numeric(register[["T_PK"]])
+      }
+    }
+    else if (left.edge>=12 & right.edge>17) {
+      # if gap includes 13;16 plus more after, fill with T_PK value in 13:16 then linear after
+      # no compensation for larger step size needed is coded (yet)
+      for (i in (1:gap.size)) {
+        xx <- ((left.edge+1):(right.edge-1))[i]
+        label <- glue("T{xx}")
+        if (xx<=16) {
+          register[[label]] <- as.numeric(register[["T_PK"]])
+        }
+        else {
+          # remaining Txx values are filled in using linear model as if T_PK not used at all
+          register[[label]] <- as.numeric(left[2] + i*temp.fill.step)
+        }
+      }
+    }
+    else if (left.edge<12 & right.edge<=17) {
+      # if gap includes 13:16 but starts to the left, fill 13:16 with T_PK value and linear before
+      # But linear on left side needs to go UP to T_PK value
+      temp.fill.to.PK <- (as.numeric(register[["T_PK"]]) - left[2]) / (13-left.edge)
+      for (i in (1:gap.size)) {
+        xx <- ((left.edge+1):(right.edge-1))[i]
+        label <- glue("T{xx}")
+        if (xx>12) {
+          register[[label]] <- as.numeric(register[["T_PK"]])
+        }
+        else {
+          # remaining Txx values are filled in using linear model as if T_PK not used at all
+          register[[label]] <- as.numeric(left[2] + i*temp.fill.to.PK)
+        }
+      }
+    }
+    else if (left.edge<12 & right.edge>17) {
+      # if gap is wide and starts before 13:16 and ends after it, just replace all with T_PK
+      for (i in (1:gap.size)) {
+        xx <- ((left.edge+1):(right.edge-1))[i]
+        label <- glue("T{xx}")
+        register[[label]] <- as.numeric(register[["T_PK"]])
+      }
+    }
+  }
+  return (register) 
+}
+
+
+```
+
+Probamos para ver que funciona a la continuación, sin cambiar los datos todavía.
+
+Buscando unos ejemplos donde tenemos NA en T0:
+
+```{r}
+head(data_cleaned[is.na(data_cleaned$T0), 28:52])
+```
+
+Podemos ver que la linea 1307, aparte de faltar T0 - un tipo de agujero en los datos que no podemos tratar con la lógica anterior - falta T13, T14.
+
+```{r}
+temp_inference(data_cleaned[1307, 28:52])
+```
+
+Ahora después de llamar la función solo en esa fila, vemos que se han remplazado T13 y T14 con valores imputados según la lógica, pero T0 sigue NA.
+
+Pero, aparte de señalar que la función es adecuado, subraya que tenemos muchas filas que faltan datos empezando con T0, cosa que no manejamos con la función.  Si podríamos imputar un valor para T0 en esos casos, podremos usar la función después para rellenar el agujero.  Una prueba no incluida aquí ha constatado que la función sin más solo puede corregir 58 filas.  
+
+Si imputamos T0 con kNN, solo haciendo referencia al campo DATE, puede ser que podremos tener un valor T0 razonable de fechas cercanas.  Pero, después de unos experimentos, parece que VIM::kNN() no acepta fechas como tal, y,  por consecuencia, no puede identificar las fechas cercanas.  Se podría hacer una función para hacerlo, pero la complicación es que estamos implicando datos de varias filas a la vez.  Dado que estamos solo mirando valores de T0, podremos hacerlo en dos pasos, primero haciendo un dataframe a medida para incluir más columnas para los T0 de, por ejemplo, dos fechas por adelante y dos siguientes, y segundo, tomando la media de los otros T0 cuando tenemos NA.
+
+```{r}
+# Create temp dataframe with blanks for two previous and two following T0 values
+data_T0s <- cbind(data_cleaned[, c("DATE", "T0")], T_2=NA, T_1=NA, T.1=NA, T.2=NA)
+
+T0s.before.after.add <- function(df)  {
+  # For each row, fill in T0 from previous 2 and following 2 rows
+  for (i in (1:nrow(df))) {
+    if (i-2>0) {
+      df$T_2[i] <- df$T0[i-2]
+    }
+    if (i-1>0) {
+      df$T_1[i] <- df$T0[i-1]
+    }
+    if (i+1<=nrow(df)) {
+      df$T.1[i] <- df$T0[i+1]
+    }
+    if (i+2<=nrow(df)) {
+      df$T.2[i] <- df$T0[i+2]
+    }
+  }
+  return (df)
+}
+
+# Process the temporary T0 data
+data_T0s <- T0s.before.after.add(data_T0s)
+head(data_T0s)
+```
+
+Verificamos cuantos casos tenemos de datos que faltan en su totalidad, que no dejaremos imputar un valor para T0:
+
+```{r}
+nrow(data_T0s[is.na(data_T0s$T0) 
+              & is.na(data_T0s$T_2) 
+              & is.na(data_T0s$T_1) 
+              & is.na(data_T0s$T.1) 
+              & is.na(data_T0s$T.2), ])
+
+nrow(data_cleaned[is.na(data_cleaned$T0), ])
+
+```
+
+Pues, resulta decepcionante, por que, de los casos en que falta el valor de T0, tendremos 171 de los 190 en que no hay valor T0 para los días vecinos [por que faltan en un bloque grande contiguo]. Aún así, continuamos con lo que se puede. Acabaremos teniendo que borrar más registros por falta de Txx que nos gustaría. 
+
+```{r warning=FALSE}
+# Function to average the other T0 values when T0 for current row is NA
+avg.T0s.inference <- function(register) {
+  if (is.na(register[2])) {
+    mean.calc <- as.numeric(mean(as.numeric(register[3:6]), na.rm=TRUE))
+    if (!is.nan(mean.calc)) {
+      register[2] <- mean.calc
+    }
+  }
+  return (register)
+}
+
+# Process the temporary T0 data to impute the NA values by averaging
+data_T0s <- as.data.frame(t(apply(data_T0s, MARGIN=1, avg.T0s.inference)))
+```
+
+
+Ahora que tenemos la imputación por función, remplazamos los valores originales de T0 con los imputados.
+
+```{r}
+data_cleaned$T0 <- as.numeric(data_T0s$T0)
+nrow(data_cleaned[is.na(data_cleaned$T0), ])
+```
+
+Como esperado, nos quedamos con 171 casos de T0=NA sin poder corregirles.  
+
+Un ejemplo resuelto es la fila 1307 visto arriba:
+
+```{r}
+data_cleaned[1306:1308, 28:52]
+
+```
+
+Lógicamente, si tratamos de permitir el máximo de imputación por el modelo lineal, tendremos que hacer lo mismo con T23, el otro extremo, que hemos hecho con T0 anteriormente.
+
+```{r}
+# Create temp dataframe with blanks for two previous and two following T23 values
+data_T23s <- cbind(data_cleaned[, c("DATE", "T23")], T_2=NA, T_1=NA, T.1=NA, T.2=NA)
+
+T23s.before.after.add <- function(df)  {
+  # For each row, fill in T23 from previous 2 and following 2 rows
+  for (i in (1:nrow(df))) {
+    if (i-2>0) {
+      df$T_2[i] <- df$T23[i-2]
+    }
+    if (i-1>0) {
+      df$T_1[i] <- df$T23[i-1]
+    }
+    if (i+1<=nrow(df)) {
+      df$T.1[i] <- df$T23[i+1]
+    }
+    if (i+2<=nrow(df)) {
+      df$T.2[i] <- df$T23[i+2]
+    }
+  }
+  return (df)
+}
+
+# Process the temporary T23 data
+data_T23s <- T23s.before.after.add(data_T23s)
+head(data_T23s)
+```
+
+Verificamos cuantos casos tenemos de datos que faltan en su totalidad, que no dejaremos imputar un valor para T23:
+
+```{r}
+nrow(data_T23s[is.na(data_T23s$T23) 
+              & is.na(data_T23s$T_2) 
+              & is.na(data_T23s$T_1) 
+              & is.na(data_T23s$T.1) 
+              & is.na(data_T23s$T.2), ])
+
+nrow(data_cleaned[is.na(data_cleaned$T23), ])
+
+```
+
+
+Parecido a la situación con T0, resulta decepcionante, por que, de los casos en que falta el valor de T23, tendremos 171 de los 189 en que no hay valor T23 para los días vecinos [por que faltan en un bloque grande contiguo]. Aún así, continuamos con lo que se puede. Acabaremos teniendo que borrar más registros por falta de Txx que nos gustaría. 
+
+```{r }
+# Function to average the other T23 values when T23 for current row is NA
+avg.T23s.inference <- function(register) {
+  if (is.na(register[2])) {
+    mean.calc <- as.numeric(mean(as.numeric(register[3:6]), na.rm=TRUE))
+    if (!is.nan(mean.calc)) {
+      register[2] <- mean.calc
+    }
+  }
+  return (register)
+}
+
+# Process the temporary T0 data to impute the NA values by averaging
+data_T23s <- as.data.frame(t(apply(data_T23s, MARGIN=1, avg.T23s.inference)))
+```
+
+
+Ahora que tenemos la imputación por función, remplazamos los valores originales de T23 con los imputados.
+
+```{r}
+data_cleaned$T23 <- as.numeric(data_T23s$T23)
+nrow(data_cleaned[is.na(data_cleaned$T23), ])
+```
+
+
+
+
+Un ejemplo de bloques grandes de registros en que faltan datos horarios totalmente:
+
+```{r}
+data_cleaned[1634:1643, 1:52]
+```
+
+
+Y podemos proceder a usar la función temp_inference() para tratar a lo máximo posible los huecos de valores NA de los Txx:
+
+```{r}
+data_cleaned[1, 28:52]
+```
+
+```{r}
+data_cleaned_Txxs <- as.data.frame(t(apply(data_cleaned[ , 28:52], MARGIN=1, temp_inference)))
+
+head(data_cleaned_Txxs)
+```
+
+La función temp_inference, como escrito, tiene la debilidad de solo tratar un solo agujero en los Txx, no más.
+
+Por tanto, tenemos que verificar si hay filas en data_cleaned_Txxs donde hay NAs, aparte de las filas donde hay 24 o 23 o 22 NAs - los sin ninguna valor Txx, o los con un valor T0 y/o T23 imputado arriba.  Podemos usar la función hecho anteriormente para contar los NAs por fila y un histograma después.  Si tenemos cantidades de NAs menor que 22, tenemos que **repetir** el uso de la función.
+
+```{r}
+
+# sweep by rows (margin = 1)
+na_count_Txxs <- apply(data_cleaned_Txxs, MARGIN=1, count_nas_in_row)
+
+# histogram count of NAs per row
+# Note, zeros will be excluded because are "NA" instead from function above
+hist(na_count_Txxs, breaks=50, xlab="Cuantos variables Txx son NA en cada fila", ylab="Cuentas", main="Cuantos variables Txx en cada fila son NA, excluyendo filas con cero NA")
+```
+
+Vemos que hay unos <22, y hay que repetir la función.
+
+```{r}
+
+data_cleaned_Txxs <- as.data.frame(t(apply(data_cleaned_Txxs, MARGIN=1, temp_inference)))
+```
+
+Ahora contamos los NAs de nuevo:
+
+```{r}
+# sweep by rows (margin = 1)
+na_count_Txxs <- apply(data_cleaned_Txxs, MARGIN=1, count_nas_in_row)
+
+# histogram count of NAs per row
+# Note, zeros will be excluded because are "NA" instead from function above
+hist(na_count_Txxs, breaks=50, xlab="Cuantos variables Txx son NA en cada fila", ylab="Cuentas", main="Cuantos variables Txx en cada fila son NA, excluyendo filas con cero NA")
+```
+
+Parece que hay unos pocos todavía, repetimos una segunda vez.
+
+```{r}
+
+data_cleaned_Txxs <- as.data.frame(t(apply(data_cleaned_Txxs, MARGIN=1, temp_inference)))
+```
+
+Ahora contamos los NAs de nuevo:
+
+```{r}
+# sweep by rows (margin = 1)
+na_count_Txxs <- apply(data_cleaned_Txxs, MARGIN=1, count_nas_in_row)
+
+# histogram count of NAs per row
+# Note, zeros will be excluded because are "NA" instead from function above
+hist(na_count_Txxs, breaks=50, xlab="Cuantos variables Txx son NA en cada fila", ylab="Cuentas", main="Cuantos variables Txx en cada fila son NA, excluyendo filas con cero NA")
+```
+
+Ahora, si, vemos que no tenemos más huecos sin tratar.
+
+Ahora podemos remplazar los valores de Txx en data_cleaned con los modificados de data_cleaned_Txxs, para usar lo que hemos podido imputar con los esfuerzos anteriores.
+
+```{r}
+
+data_cleaned [ , 28:51] <- data_cleaned_Txxs[, 1:24]
+
+```
+
+Ahora, hemos concluido lo que nos parece razonable hacer para corregir valores faltando el los datos horarios de WSRxx y Txx.  Repetimos los histogramas para contar cuantos NAs faltan en cada fila, quedando claro el bloque grande de filas que faltan todos los datos horarios.
+
+```{r}
+# sweep by rows (margin = 1)
+na_count_post_clean.T.WSR <- apply(data_cleaned, MARGIN=1, count_nas_in_row)
+
+# histogram count of NAs per row
+# Note, zeros will be excluded because are "NA" instead from function above
+hist(na_count_post_clean.T.WSR, breaks=50, xlab="Cuantos variables son NA en cada fila", ylab="Cuentas", main="Cuantos variables en cada fila son NA, \nexcluyendo filas con cero NA, \ndespues de limpiar Uxx, Vxx, Txx, WSRxx")
+```
+
+Y lo mismo para los días de ozono:
+
+```{r}
+# sweep by rows (margin = 1)
+na_count_oz_post_clean.T.WSR <- apply(data_cleaned, MARGIN=1, count_nas_in_row_if_Oz)
+
+# histogram count of NAs per row
+# Note, zeros will be excluded because are "NA" instead from function
+hist(na_count_oz_post_clean.T.WSR, breaks=50, xlab="Cuantos variables son NA en cada fila", ylab="Cuentas", main="Cuantos variables en cada fila son NA, solo para días de ozono, \ndespues de limpiar Uxx, Vxx, Txx, WSRxx")
+```
+
+Los casos con 51 faltando debe ser los casos que faltan todos los datos horarios, que también implica la falta de WSR_AV, WSR_PK, T_PK.  Hay unos con 49 faltando, y esos son los casos a los bordes del bloque donde falta los datos diarios, en cuales hemos podido imputar nada más que T0 y/o T23.  
+
+Lo que intentaré hacer con esos filas es hacer imputación kNN, pero *después* de hacer la transformación de los Txx, WSRxx a vectores.  No tengo justificación concreta, pero me parece más razonable hacer kNN para solo 5 valores (vector Txx, valor T_PK, vector WSRxx, valor WSR_AV, valor WSR_PK) que para cada valor númerico Txx, WSRxx.  Esa imputación propuesta se basará en los valores de los otros variables diarios, y por tanto tenemos que tenerles todos intactos y reales.  Por tanto, no deberiamos tratar cualquier fila que falta más que 51 valores.  Debemos borrar esas filas.  Haremos eso antes de seguir.
+
+
+```{r}
+indices.to.delete.missing.excessive.data <- which(na_count_post_clean.T.WSR > 51)
+
+#which(na_count_post_clean.T.WSR == 51) 
+#which(na_count_post_clean.T.WSR == 50)                                               
+
+length(indices.to.delete.missing.excessive.data)
+head(indices.to.delete.missing.excessive.data)
+```
+
+```{r}
+#data_cleaned[1632:1633, ]
+data_cleaned <- data_cleaned[-indices.to.delete.missing.excessive.data, ]
+
+rownames(data_cleaned) <- 1:nrow(data_cleaned)
+```
+
+
+```{r}
+nrow(data_cleaned)
+```
+
+Ya tenemos 22 filas menos.
+
+Volveremos después a la imputación, tras hacer el clustering definitivo de los vectores Txx, WSRxx.
+
+
+
+### Seguimiento investigación limpieza
+
+Tenemos que seguir investigando donde tenemos NAs que posiblemente podemos tratar.
+Después de quitar filar tenemos que re-buscar cuales filas tienen NAs.
+
+```{r}
+# sweep by rows (margin = 1)
+na_count_post.delete <- apply(data_cleaned, MARGIN=1, count_nas_in_row)
+
+# histogram count of NAs per row
+# Note, zeros will be excluded because are "NA" instead from function above
+hist(na_count_post.delete, breaks=50, xlab="Cuantos variables son NA en cada fila", ylab="Cuentas", main="Cuantos variables en cada fila son NA, \ndespues de quitar filas con demasiados NAs")
+```
+
+Y lo mismo para los días de ozono:
+
+```{r}
+# sweep by rows (margin = 1)
+na_count_oz_post.delete <- apply(data_cleaned, MARGIN=1, count_nas_in_row_if_Oz)
+
+# histogram count of NAs per row
+# Note, zeros will be excluded because are "NA" instead from function
+hist(na_count_oz_post.delete, breaks=50, xlab="Cuantos variables son NA en cada fila", ylab="Cuentas", main="Cuantos variables en cada fila son NA, solo para días de ozono, \ndespues de quitar filas con demasiados NAs")
+```
+
+Miramos de nuevo los casos por los días de ozono:
+
+* 4NAs: dos casos (925, 2365) de dos parejas de Uxx, Vxx, como hemos visto anteriormente, U85, V85, U70, V70 en ambos.  Se podría aceptar hacer kNN sobre las filas enteras para imputarlas.
+* 7NAs: dos casos (236, 572) de datos diarios T70, U70, V70, T50, RH50, U50, V50 que faltan, como hemos visto anteriormente.  Se podría aceptar hacer kNN sobre las filas enteras para imputarlas.
+* 12NAs: tres casos (269, 489, 933) de todos datos diarios faltando
+* 26NAs: un caso (283) de falta de todos los WSRxx, WSR_AV, WSR_PK
+* 28NAs: un caso (279) de falta de todos los WSRxx, WSR_AV, WSR_PK, más T50, RH50
+
+Para esos dos últimos, me parece que un kNN() con los vectores ya clasificados sería lo mejor, después de imputar los valores T50, RH50.
+
+
+```{r}
+na_count_oz_post.delete[which(na_count_oz_post.delete < 30)]
+
+# 4 NA
+data_cleaned[925, ]
+data_cleaned[2365, ]
+# 7 NA
+data_cleaned[236, ]
+data_cleaned[572, ]
+# 12 NA
+data_cleaned[269, ]
+data_cleaned[489, ]
+data_cleaned[933, ]
+# 26 NA
+data_cleaned[283, ]
+# 28 NA
+data_cleaned[279, ]
+
+
+```
+
+Está claro que usar imputación kNN con esos casos resultará en el arreglo de casos con bajo ozono también, pero no es nuestro prioridad.
+
+Procedemos con una imputación kNN que cubrirá todos los variables diarias aparte de Precp: T85, RH85, U85, V85, T70, U70, V70, T50, RH50, U50, V50, SLP.  Por las filas en que hay valores parciales diarias, será solo por la parte que falta.  Incluiremos los clases de ozono en los datos - cosa que podría incluso estar interpretado como algo cerca a *over-sampling*, porqué estaremos dando un poco de influencia a los casos de ozono alta para crear valores imputados que se parecen más a los días de ozono.
+
+```{r}
+
+data_cleaned_full.imputation <- kNN(data_cleaned, variable=c("T85", "RH85", "U85", "V85", "T70", "U70", "V70", "T50", "RH50", "U50", "V50", "SLP"), k=5)
+
+head(data_cleaned_full.imputation)
+nrow(data_cleaned_full.imputation)
+head(data_cleaned_full.imputation[, 1:67])
+```
+
+Podemos quitar las columnas indicando imputación hecha.
+
+```{r}
+data_cleaned_full.imputation <- data_cleaned_full.imputation[, 1:67]
+```
+
+Ahora volvemos a mirar que tenemos de NAs para planificar los siguientes pasos.
+
+```{r}
+# sweep by rows (margin = 1)
+na_count_post.delete <- apply(data_cleaned_full.imputation, MARGIN=1, count_nas_in_row)
+
+table(na_count_post.delete)
+
+# histogram count of NAs per row
+# Note, zeros will be excluded because are "NA" instead from function above
+hist(na_count_post.delete, breaks=50, xlab="Cuantos variables son NA en cada fila", ylab="Cuentas", main="Cuantos variables en cada fila son NA, \ndespues de imputar datos diarios")
+```
+
+Y lo mismo para los días de ozono:
+
+```{r}
+# sweep by rows (margin = 1)
+na_count_oz_post.delete <- apply(data_cleaned_full.imputation, MARGIN=1, count_nas_in_row_if_Oz)
+
+# histogram count of NAs per row
+# Note, zeros will be excluded because are "NA" instead from function
+hist(na_count_oz_post.delete, breaks=50, xlab="Cuantos variables son NA en cada fila", ylab="Cuentas", main="Cuantos variables en cada fila son NA, solo para días de ozono, \ndespues de imputar datos diarios")
+```
+
+Como esperado, casi solo tenemos las filas con los vectores Txx, WSRxx que faltan.  En el histograma la barra a ~2NAs parece ser en artefacto del hist() como que no salen en los resultados de table(). 
+
+Entonces, solo nos quedan hacer las transformaciones de los vectores, y después un segundo paso por kNN usando las clasificaciones de los vectores.  Tras esos pasos, habrá todavía NAs en WSR_AV, WSR_PK, y T_PK que tendremos, de nuevo, imputar.
+
+### Transformación de vectores Txx, WSRxx usando MClust
+
+Anteriormente, hemos elegido como queremos transformar los datos horarios de temperatura y velocidad del viento, clasificándolos como vectores, en clusters, pero no lo hemos hecho en el apartado de Conversión, como que faltaba muchos valores.  Ahora con los trabajos de imputación, hemos reducido al mínimo los NAs y ahora es el momento de hacer la conversión y clasificación.  
+
+Lo haremos aislando las filas sin NAs, dejando las filas con NAs con un valor de vector NA, que imputaremos después.
+
+Los métodos elegidos anteriormente son:
+
+* Txx: MClust modelo VVV con G=8.
+* WSRxx: MClust modelo VVV con G=6.
+
+En ambos casos, tenemos ya modelos ajustados, hechos con datos "enteros" con filas incluyendo cualquier NA quitada.  Se puede re-usar esos modelos para predecir de nuevo la clasificación de cada vector de Txx y WSRxx.  Pero, no podemos pasar las filas con vectores totalmente NA al modelo - tendremos que filtrar los indicios de las filas validas, y por esas filas añadir las dos columnas de clasificación de vector.  Por las filas con vectores NA, pondremos NA.
+
+#### Clustering definitivo Txx
+
+El modelo ya ajustado es en mclust_VVV8_temps.
+
+```{r}
+# Fetch indices for rows which will get a Txx vector classificaction (rows with no NAs)
+indices.full.Txxs <- which(complete.cases(data_cleaned_full.imputation[28:51]) == TRUE)
+
+# Classify vectors using model
+# Store "classification" object into a vector to add to dataframe
+full.Txx.vector.classification <- predict(mclust_VVV8_temps,
+                                          na.omit(data_cleaned_full.imputation[28:51]))$classification
+
+Txx.vectors.indexed <- data.frame(vector = full.Txx.vector.classification)
+rownames(Txx.vectors.indexed) <- indices.full.Txxs
+
+```
+
+```{r}
+# Check lengths etc
+length(indices.full.Txxs)
+length(full.Txx.vector.classification)
+nrow(Txx.vectors.indexed)
+head(Txx.vectors.indexed, 1)
+tail(Txx.vectors.indexed, 1)
+
+```
+
+Añadimos columnas extras para clase de vector Txx, WSRxx y remplazamos los valores en filas clasificadas por el valor generado por el modelo.
+
+
+```{r}
+# Add two empty columns to prepare dataframe
+data_cleaned_vector.classes <- cbind(data_cleaned_full.imputation, WSR.vect = NA, T.vect = NA)
+
+# Match up vector classes from model prediction to their rows
+# rownames of Txx.vectors.indexed is already set to the target indices' values
+data_cleaned_vector.classes$T.vect[rownames(data_cleaned_vector.classes) 
+                                   %in% 
+                                     indices.full.Txxs] <- Txx.vectors.indexed$vector
+
+head(data_cleaned_vector.classes, 1)
+tail(data_cleaned_vector.classes, 1)
+nrow(data_cleaned_vector.classes[is.na(data_cleaned_vector.classes$T.vect), ])
+
+```
+
+El numero de NAs restante en T.vect es 153, que es la diferencia esperada, de 2514-2361.
+
+#### Clustering definitivo WSRxx
+
+Haciendo el análogo para los WSR's:
+
+```{r}
+# Fetch indices for rows which will get a WSRxx vector classificaction (rows with no NAs)
+indices.full.WSRxxs <- which(complete.cases(data_cleaned_full.imputation[2:25]) == TRUE)
+
+# Classify vectors using model
+# Store "classification" object into a vector to add to dataframe
+full.WSRxx.vector.classification <- predict(mclust_G6_WSR,
+                                          na.omit(data_cleaned_full.imputation[2:25]))$classification
+
+WSRxx.vectors.indexed <- data.frame(vector = full.WSRxx.vector.classification)
+rownames(WSRxx.vectors.indexed) <- indices.full.WSRxxs
+
+```
+
+```{r}
+# Check lengths etc
+length(indices.full.WSRxxs)
+length(full.WSRxx.vector.classification)
+nrow(WSRxx.vectors.indexed)
+head(WSRxx.vectors.indexed, 1)
+tail(WSRxx.vectors.indexed, 1)
+
+```
+
+Ya tenemos la columna hechoa para clase de vector WSRxx.  Remplazamos los valores en filas clasificadas por el valor generado por el modelo.
+
+
+```{r}
+# Match up vector classes from model prediction to their rows
+# rownames of Txx.vectors.indexed is already set to the target indices' values
+data_cleaned_vector.classes$WSR.vect[rownames(data_cleaned_vector.classes) 
+                                   %in% 
+                                     indices.full.WSRxxs] <- WSRxx.vectors.indexed$vector
+
+head(data_cleaned_vector.classes, 1)
+tail(data_cleaned_vector.classes, 1)
+nrow(data_cleaned_vector.classes[is.na(data_cleaned_vector.classes$WSR.vect), ])
+
+```
+
+El numero de NAs restante en WSR.vect es 251, que es la diferencia esperada, de 2514-2263.
+
+Antes de seguir, tenemos que convertir los clases de los vectores en Factors, como que no son valores numéricos, solo etiquetas.
+
+```{r}
+data_cleaned_vector.classes$T.vect <- as.factor(data_cleaned_vector.classes$T.vect)
+data_cleaned_vector.classes$WSR.vect <- as.factor(data_cleaned_vector.classes$WSR.vect)
+```
+
+
+### Imputación final para vectores T y WSR NA
+
+Ahora podemos hacer los pasos finales de limpieza, de imputar los valores de los vectores de temperatura horaria y de velocidad del viento horario, y los valores NA de WSR_AV, WSR_PK, T_PK [como que estos faltan también cuando faltan todos los datos horarios], con kNN.
+
+Lo hacemos en dos pasos.  
+
+1. Primero hacemos un subconjunto sin WSR_AV, WSR_PK, T_PK y sin los datos horarios, para imputar los clases de vectores.  Luego remplazamos los vectores NA con esos valores imputados, de nuevo quitando las columnas que añade kNN().
+2. Segundo, imputamos los valores WSR_AV, WSR_PK, T_PK que falten finalmente.  
+
+```{r}
+# Subset to only have daily data and vectors
+data_daily.vectors <- subset( data_cleaned_vector.classes, select = -c(2:25, 28:51))
+
+head(data_daily.vectors, 1)
+
+```
+
+
+```{r}
+# Perform kNN and overwrite NAs directly
+data_daily.vectors <- kNN(data_daily.vectors, variable=c("T.vect", "WSR.vect"), k=5)
+
+head(data_daily.vectors)
+nrow(data_daily.vectors)
+head(data_daily.vectors[, 1:21])
+```
+
+Verificamos que no hay vectores NA ahora:
+
+```{r}
+any(is.na(data_daily.vectors$T.vect) | is.na(data_daily.vectors$WSR.vect))
+```
+
+Podemos quitar las columnas indicando imputación hecha.
+
+```{r}
+data_daily.vectors <- data_daily.vectors[, 1:21]
+```
+
+Hacemos el segundo pase de kNN para WSR_AV, WSR_PK, T_PK
+
+```{r}
+# Perform kNN and overwrite NAs directly
+data_daily.vectors <- kNN(data_daily.vectors, variable=c("WSR_PK", "WSR_AV", "T_PK"), k=5)
+
+head(data_daily.vectors)
+nrow(data_daily.vectors)
+head(data_daily.vectors[, 1:21])
+```
+
+De nuevo, podemos quitar las columnas indicando imputación hecha.
+
+```{r}
+data_daily.vectors <- data_daily.vectors[, 1:21]
+```
+
+Finalmente, confirmamos que no tenemos NAs en el dataframe.  Nos acordamos que ya hemos quitado los datos horarios anteriormente, en favor de usar los vectores clusterizados en su lugar.
+
+```{r}
+summary(data_daily.vectors)
+```
+
+Pues, hemos faltado tomar en cuenta dos NAs en la cantidad de precipitación.  Suponemos que es razonable hacer un último kNN() para esos dos.
+
+
+```{r}
+# Perform kNN and overwrite NAs directly
+data_daily.vectors <- kNN(data_daily.vectors, variable=c("Precp"), k=5)
+data_daily.vectors <- data_daily.vectors[, 1:21]
+
+```
+
+```{r}
+summary(data_daily.vectors)
+```
+
+Ya estamos terminados finalmente con la limpieza.
+
+```{r}
+summary(data_daily.vectors$T.vect)
+```
+
+El último paso es convertir los clases de ozono en factores.
+
+```{r}
+data_daily.vectors$Oz8h <- as.factor(data_daily.vectors$Oz8h)
+data_daily.vectors$OzoneDay1hPeak <- as.factor(data_daily.vectors$OzoneDay1hPeak)
+
+```
+
+
+Seguiremos usando los datos de ese apartado, por decir los datos diarios más los vectores representando las secuencias de datos horarios.
+
+
+
+
+## Juntar datos del día anterior
+
+Aunque fue planificado, de momento, parece que carecemos de tiempo para investigar el uso de datos diarios del día anterior, con motivo de mejorar el rendimiento, posiblemente, de los modelos.
+
+
+# Análisis
+
+## Análisis visual de los datos
+
+Nuestro fuente de datos ahora es así:
+
+
+```{r}
+str(data_daily.vectors)
+```
+
+
+Haremos varias *scatterplots*, incluyendo *jitter*  para apreciar mejor la densidad de las lecturas.
+
+```{r}
+
+ggplot(data=data_daily.vectors, aes(x=WSR_AV, y=WSR_PK, color=factor(Oz8h))) + geom_jitter(size=0.85, alpha=0.7) + xlab("Velocidad media del viento") +ylab("Velocidad maxima")+ labs(title='Dias de Ozona alta medido por la media de 8h > 80ppb', caption='Puntos azules son O3 alto', color= 'Ozone Day 8h Average')
+
+```
+
+Parece que tenemos mas días de Ozona cuando los vientos están mas calmas, generalmente, que cuadra con la intuición que la contaminación esta menor cuando el viento desplaza los precursores.
+
+```{r}
+ggplot(data=data_daily.vectors, aes(x=WSR_AV, y=T_PK, color=factor(Oz8h))) + geom_jitter(size=0.85, alpha=0.7) + xlab("Velocidad media del viento") +ylab("Temperatura maxima diaria")+ labs(title='Dias de Ozona alta medido por la media de 8h > 80ppb', caption='Puntos azules son O3 alto', color= 'Ozone Day 8h Average') + 
+  geom_hline(yintercept=0.50) + annotate("segment", x=0.2, y=0.5, xend = 0.5, yend = 0.875)
+```
+
+Se nota claramente que Ozona esta peor con temperaturas altas, y de hecho no tenemos ningún caso por debajo de la temperatura normalizada 0.50, como podemos ver con la linea horizontal.  Además, solo se encuentre un punto de ozono a la derecha de la linea inclinada.  Aparte de ese punto, todos se encuentran en la parte arriba-izquierdo del espacio.  Eso quiere decir que el efecto positivo de temperaturas altas puede superar, hasta cierto nivel, el efecto inverso de vientos fuertes.
+
+```{r}
+
+ggplot(data=data_daily.vectors, aes(x=SLP, y=Precp, color=factor(Oz8h))) + geom_jitter(size=0.85, alpha=0.7) + xlab("Presion atmosferica al nivel de mar") +ylab("Precipitacion diaria")+ labs(title='Dias de Ozona alta medido por la media de 8h > 80ppb', caption='Puntos azules son O3 alto', color= 'Ozone Day 8h Average')
+
+```
+
+Ozona no aparece en los días con alta presión atmosférica, parece, y tampoco en los (pocos) días con alta precipitación.  Como que alta presión atmosférica está normalmente asociado con temperaturas bajas, es cuadra con lo que hemos visto anteriormente, y con lo que entendemos del proceso de creación de ozono.
+
+
+
+```{r}
+ggplot(data=data_daily.vectors, aes(x=T.vect, y=T_PK, color=factor(Oz8h))) + geom_jitter(size=0.85, alpha=0.7) + xlab("Tipo de vector de temperaturas horarias") +ylab("Temperatura maxima diaria")+ labs(title='Dias de Ozona alta medido por la media de 8h > 80ppb', caption='Puntos azules son O3 alto', color= 'Ozone Day 8h Average')
+
+```
+
+Ahora vemos que los vectores de tipo 3, 5, 6, y, de menor grado, 7, son los que cubran la gran mayoría de días de ozono.  La modelización posterior debería hacer uso de eso.
+
+Lógicamente, esos vectores son días de temperaturas máximas más altas.  En ese gráfico, el uso de *jitter* ayuda mucho.  Sin *jitter*, tendremos todos los puntos juntos en las lineas verticales 1,2,3,4,5,6,7,8, y estaría más difícil interpretar visualmente.
+
+
+```{r}
+ggplot(data=data_daily.vectors, aes(x=WSR.vect, y=WSR_AV, color=factor(Oz8h))) + geom_jitter(size=0.85, alpha=0.7) + xlab("Tipo de vector de velocidades horarios del viento") +ylab("Velocidad media del viento")+ labs(title='Dias de Ozona alta medido por la media de 8h > 80ppb', caption='Puntos azules son O3 alto', color= 'Ozone Day 8h Average')
+```
+
+En una situación análoga pero inversa a los vectores de temperatura, aquí vemos que los vectores correspondiendo a vientos débiles contienen la mayoría de días de ozono, en gran parte en los vectores 1,2 y 4.  Pero, la categorización no parece tan apropiado aquí comparado a los vectores de temperatura, sin lo evaluamos visualmente, del punto de vista de predecir días de ozono alto.
+
+
+```{r}
+ggplot(data=data_daily.vectors, aes(x=U85, y=V85, color=factor(Oz8h))) + geom_jitter(size=0.85, alpha=0.7) + xlab("Componente este-oeste viento a 850 hPa") +ylab("Componente norte-sur viento a 850 hPa")+ labs(title='Dias de Ozona alta medido por la media de 8h > 80ppb', caption='Puntos azules son O3 alto', color= 'Ozone Day 8h Average') + annotate("segment", x=-0.1, y=0.16, xend = 0.1, yend = -0.14)
+
+ggplot(data=data_daily.vectors, aes(x=U70, y=V70, color=factor(Oz8h))) + geom_jitter(size=0.85, alpha=0.7) + xlab("Componente este-oeste viento a 700 hPa") +ylab("Componente norte-sur viento a 700 hPa")+ labs(title='Dias de Ozona alta medido por la media de 8h > 80ppb', caption='Puntos azules son O3 alto', color= 'Ozone Day 8h Average') + 
+  geom_vline(xintercept=0)
+
+ggplot(data=data_daily.vectors, aes(x=U50, y=V50, color=factor(Oz8h))) + geom_jitter(size=0.85, alpha=0.7) + xlab("Componente este-oeste viento a 500 hPa") +ylab("Componente norte-sur viento a 500 hPa")+ labs(title='Dias de Ozona alta medido por la media de 8h > 80ppb', caption='Puntos azules son O3 alto', color= 'Ozone Day 8h Average')
+
+
+```
+
+Los tres arriba son los vectores componentes del viento, a tres alturas distintas, empezando al mas bajo, donde hay presión de 850 hPA, luego el mediano a 700 hPA, y el mas alto a 500 hPA.  Recuerda que la presión atmosférica disminuye con mas altura.  Antes de crear los gráficos, pensaba que tener las dos lecturas, en dirección este-oeste y norte-sur, estaría sobrado, y que hubiera sido mejor combinar esos calculando la velocidad absoluta, independiente de la dirección.  
+
+Pero se puede apreciar unas cosas.
+
+* Primero, se nota que los valores positivos del componente este-oeste tienen que ser el dominante al latitud donde se encuentra Houston, a 29 grados Norte [Ref. 6].  Eso parece justo al sur de la zona llamado "Latitudes del Caballo" (dicho como Lat 30-35 grados Norte), entrando en la zona de vientos alisios.  Los alisios circulan en mayoría desde el noreste, mientras que en la zona del caballo, hay mezcla entre los alisios y los vientos desde el oeste que circulan a latitudes más hacía el norte. [Ref. 7]  
+
+* Esa mezcla también pasa en el vertical, en grandes flujos circulares llamados "Hadley cells" y "Ferrel cells" [Ref. 8], que, en los latitudes del caballo, están llevando un flujo de aire hacia el suelo desde la atmósfera.  Ese flujo esta conocido como un factor que empeora la calidad de aire en esas latitudes por atrapar contaminación contra el suelo. [Ref. 8].  Entonces, los valores positivos serán viento del este, que cuadra con la descripción "Viento este-oeste". 
+
+* Segundo, especialmente a la altura de 700 hPa, se puede ver una concentración de días de ozona cuando el viento este-oeste esta al revés, con valores negativos pequeños.  Podremos suponer que pasa eso cuando hay un remolino a gran escala presionando contra el viento dominante desde el noreste.  Estaría lógico, mirando los efectos físicos, de entender que tal situación podría causar un estancamiento de aire con contaminación, impidiendo su dispersión.
+* A la altura de 850 hPa, casi vemos una linea a 45 grados a través del cero o cerca, con los días de Ozona abajo a la izquierda.  
+* En contra, a la altura mas alta, con vientos generalmente mas rápidas, vemos menos correlación con días de ozona, que es lógico como que hay menos conexión física con el aire al nivel del suelo, desde esa altura. 
+
+
+Ahora miramos otros datos a esas tres alturas distintas, la temperatura y humedad relativa.  Pero, como que hemos quitado el dato RH70 por falta de relevancia, solo lo haremos a 850 hPA y 500 hPA, el más bajo y el más alto.
+
+```{r}
+ggplot(data=data_daily.vectors, aes(x=T85, y=RH85, color=factor(Oz8h))) + geom_jitter(size=0.85, alpha=0.7) + xlab("Temperatura a 850 hPa") +ylab("Humedad relativa a 850 hPa")+ labs(title='Dias de Ozona alta medido por la media de 8h > 80ppb', caption='Puntos azules son O3 alto', color= 'Ozone Day 8h Average') + geom_vline(xintercept=0.875)
+
+#ggplot(data=data_daily.vectors, aes(x=T70, y=RH70, color=factor(Oz8h))) + geom_jitter(size=0.85, alpha=0.7) + xlab("Temperatura a 700 hPa") +ylab("Humedad relativa a 700 hPa")+ labs(title='Dias de Ozona alta medido por la media de 8h > 80ppb', caption='Puntos azules son O3 alto', color= 'Ozone Day 8h Average')
+
+ggplot(data=data_daily.vectors, aes(x=T50, y=RH50, color=factor(Oz8h))) + geom_jitter(size=0.85, alpha=0.7) + xlab("Temperatura a 500 hPa") +ylab("Humedad relativa a 500 hPa")+ labs(title='Dias de Ozona alta medido por la media de 8h > 80ppb', caption='Puntos azules son O3 alto', color= 'Ozone Day 8h Average')
+
+
+```
+
+Se puede ver que hay más días de ozono a la derecha de cada gráfico, por decir a temperaturas relativamente altas, especialmente por la altura más baja de 850 hPa.  De hecho, en la zona de temperaturas a 850 hPa, encima del valor normalizado de 0.875, parece haber una cantidad casi igual de días con ozona que de sin.  Eso cuadra bien con la observación de correlación con altas temperaturas al nivel del suelo también.
+
+No parecemos tener mucha correlación con humedad, pero es interesante ver como las niveles de humedad bajan fuertemente con altura.
+
+## Normalidad de datos
+
+Hemos declarado anteriormente que los datos no son normales, pero sin apoyo de demostración, cosa que haremos aquí.
+
+Un ejemplo, puede ser el atributo que más que ningún otro, podremos pensar que sería normal, no es normal.  Falla una prueba Shapiro-Wilk, con un valor p minúscula, diciendo que es muy improbable que es normal.  Posiblemente son más cerca a distribuciones gamma, pero tampoco he podido acertar pruebas confirmando eso.
+
+```{r}
+# Histogram and Shapiro test of SLP
+hist(data_daily.vectors$SLP, breaks=100)
+shapiro.test(data_daily.vectors$SLP)
+
+```
+
+Un segundo ejemplo negativo sera el RH85.
+
+```{r}
+# Histogram and Shapiro test of RH85
+hist(data_daily.vectors$RH85, breaks=100)
+shapiro.test(data_daily.vectors$RH85)
+
+```
+
+## Verificación de homocedasticidad
+
+Aunque no contribuye directamente a los pasos posteriores de modelización, se puede verificar si las grupos de registros creados por las categorizaciones de los vectores, o de temperatura o del viento, dan grupos con varianzas parecidas o no.  No tenemos motivos por antemano para suponer que darán varianzas diferentes.
+
+Hay que usar una prueba Fligner-Killeen como que los datos no son normales, como visto anteriormente.  
+
+Normalmente, estaremos probando el atributo dependiente, pero aquí eso es el clase de Oz8h, un atributo no-númerico, y no hace sentido.  En su lugar, demostraremos la prueba Fligner-Killeen con valores de T_PK (un atributo en principio independiente) según grupos por clasificación de T.vect, primero.  En ese caso, cual clase de vector de temperatura tiene que ser relacionado con el valor máxima de temperatura, T_PK, y por tanto, estaría esperado que hay diferencias en varianzas entre grupos de registros dividos por T.vect.
+
+```{r}
+fligner.test(T_PK ~ T.vect, data=data_daily.vectors)
+```
+
+Efectivamente, tenemos un valor *p* muy pequeño y hay que rechazar el hipótesis de que las varianzas son iguales.
+
+Ahora, cambiemos a mirar T_PK pero según grupos de vectores del viento.  Estaría más normal que las varianzas sean iguales en ese caso.
+
+```{r}
+fligner.test(T_PK ~ WSR.vect, data=data_daily.vectors)
+```
+
+Pero, tampoco hay homocedasticidad aquí.
+
+Un ejemplo más, probaremos dividiendo los registros según el clase de ozono alto por 8h, en lugar de por los clases de vectores.  Eso nos analiza si hay varianza igual de datos según agrupamiento del atributo que queremos modelizar, una situación distinta de las dos pruebas anteriores.  Como ejemplo, miraremos que varianza hay por el variable SLP.
+
+```{r}
+fligner.test(SLP ~ Oz8h, data=data_daily.vectors)
+```
+
+De nuevo, podemos ver que no tenemos homocedasticidad.
+Eso dicho, no tiene impacto en la aplicación posterior de algoritmos de modelización.
+
+## Análisis de los datos por modelos
+
+Ahora empezaremos usando algoritmos de aprendizaje automático para buscar maneras de predecir días de ozono alto.
+
+Como que tenemos dos clases distintas de ozono, lo de la media por 8h, y el de ozono alto para 1h, haremos un modelo cada vez para cada uno.  Podrán tener éxito distinto como que no resultan de exactamente las mismas condiciones ni los mismos días.
+
+### Generación de reglas a partir de un arból de decisión, C5.0
+
+Ahora usaremos arboles C5.0 para crear un juego de reglas. C5.0, siendo supervisado, necesita conjuntos de entrenamiento y de pruebas, y además, datos con secuencia aleatoria. Si estaremos manejando los conjuntos de entrenamiento y de pruebas manualmente, tendremos que barajar los registros, pero aquí usaremos los automatismos ofrecido en caret, controlado por trainControl, para especificar el uso de k=10 validación cruzada.  También, tenemos que usar datos sin fecha, aunque se quedan numeradas por su fila.
+
+Para encontrar la variación mejor adaptada del modelo C5.0, haremos una validación cruzada con 10 grupos, usando trainControl().
+
+Además, como tenemos pocos casos de ozono, la prioridad no es la exactitud, sino la sensibilidad (*sensitivity*), entonces especificamos que la selección del modelo sea hecho basado en la máxima suya.  Noto que no parece que train() está reaccionando al parámetro minCases, que se usa con C5.0 para reducir el sobreajuste del modelo.  Veo que es una limitación conocida, y incluso he encontrado código para tratarlo [Ref. 12], aunque no probaré el código.
+
+Nota: estamos bajando de 10 k-fold a 5 para reducir el tamaño de ciertos resultados, como que R-Studio está empezando a portarse malamente.
+
+Nota: Aunque el argumento de priorizar la sensibilidad descrito anteriormente sigue valido, hemos visto en los resultados que estaría mejor priorizar Kappa, que nos dara un modelo mas robusto, considerando la extrema desigualidad de los clases en nuestros datos.
+
+```{r}
+train_control <- trainControl(method="cv", 
+                              number=5,
+                              summaryFunction = multiClassSummary) 
+
+C5.0.train.8h <- train(Oz8h ~.,
+                       data = subset(data_daily.vectors, select=-c(DATE, OzoneDay1hPeak)), 
+                       trControl = train_control, 
+                       method = "C5.0", 
+                       metric = "Kappa")
+
+
+```
+
+```{r}
+summary(C5.0.train.8h)
+```
+
+```{r}
+plot(C5.0.train.8h)
+print(C5.0.train.8h)
+
+```
+
+Ahora vamos a confirmar las estadísticas de rendimiento por el modelo. 
+
+```{r}
+confusionMatrix(C5.0.train.8h)
+stats.best.C5.0 <- C5.0.train.8h$results[order(-C5.0.train.8h$results$Kappa), ][1, ]
+stats.best.C5.0
+
+```
+
+En las reglas podemos ver, por ejemplo, el uso de unos vectores:
+
+* Rule 7: T.vect = 6
+* Rule 10: T.vect in {5, 7}
+* Rule 11: WSR.vect = 4
+* Rule 12: T.vect in {4, 6}
+
+Esos no cuadran con los que hemos notado en el análisis visual, exactamente (WSR vectors 1,2,4 y T vectors 3,5,6 nos parecían los idóneos para días de ozono.)  
+
+T_PK, en contra, tenía correlación alta con ozono, y lo vemos en todas la reglas donde sale ozono, como esperado.
+
+### Clasificación usando k-Nearest Neighbours
+
+Ahora usaremos el algoritmo de kNN, no para imputación, pero para clasificación de días de ozono por un modelo de predicción. kNN,  kNN, como C5.0, está supervisado, y usaremos los automatismos ofrecido por caret para hacer validación cruzada para elegir el variante de modelo mejor adaptado. Igual que con C5.0, pedimos la sensibilidad mayor, no la exactitud.
+
+
+```{r}
+train_control <- trainControl(method="cv", 
+                              number=10,
+                              summaryFunction = multiClassSummary) 
+
+knn.train.8h <- train(Oz8h ~.,
+                       data = subset(data_daily.vectors, select = -c(DATE, OzoneDay1hPeak)), 
+                       trControl = train_control, 
+                       method = "knn", 
+                       tuneLength = 20,
+                       metric = "Sensitivity")
+
+
+```
+
+```{r}
+knn.train.8h
+plot(knn.train.8h)
+```
+
+Podemos ver que el rango elegido automáticamente de valores k acaba siendo demasiado gruesa para detectar los días de ozono, y acaba dando modelos inválidos después de k=25.  Tenemos que investigar rangos más bajas de valores k.
+
+```{r}
+knn.train.8hbis <- train(Oz8h ~.,
+                       data = subset(data_daily.vectors, select = -c(DATE, OzoneDay1hPeak)), 
+                       trControl = train_control, 
+                       method = "knn", 
+                       tuneGrid = data.frame(k=seq(3,23,by=2)),
+                       metric = "Sensitivity")
+```
+
+
+
+```{r}
+plot(knn.train.8hbis)
+print(knn.train.8hbis)
+```
+
+Vemos que Cohen's kappa y Specificity caen rápidamente desde k=3.  Por kappa, eso quiere decir que los negativos falsos y positivos falsos están creciendo rápidamente.  Cuando a specificity, quiere decir que los positivos falsos están creciendo rápidamente.  En ese contexto, un falso positivo es un día clasificado como de ozono cuando no es en la realidad, por decir, da un estado de alarma sin ser correcto.  Notamos que en [Ref. 13] dicen que Kappa es más útil cuando hay proporciones de clases muy desigual, cosa que existe aqui en nuestros datos, con aprox 150 casos de ozono 8h en 2500 registros.  Entonces mejor que le prestamos atención.  
+
+El hecho que empezamos con valores bajas de kappa y specificity ya con k=3, y no mejoran, sugiere que estamos mejor quedando con k=3.  Entonces calculamos de nuevo el modelo, con k fijo a ese valor.
+
+```{r}
+knn.train.8h.k3 <- train(Oz8h ~.,
+                       data = subset(data_daily.vectors, select = -c(DATE, OzoneDay1hPeak)), 
+                       trControl = train_control, 
+                       method = "knn", 
+                       tuneGrid = data.frame(k=3),
+                       metric = "Sensitivity")
+```
+
+```{r}
+print(knn.train.8h.k3)
+```
+
+```{r}
+knn.train.8h.k3$finalModel
+```
+
+Hacemos ahora una matriz de confusión como con C5.0.
+
+```{r}
+confusionMatrix(knn.train.8h.k3)
+
+```
+
+Como que el modelo es de clustering, no se puede mostrar como las reglas de C5.0, y tampoco como se puede ver los modelos de redes neurales.
+
+### Clasificación usando Neural Networks
+
+Procedemos por un método análogo al anterior.  Estamos quitando el echo de la consola por evitar un listado muy largo que no usaremos.
+
+```{r, results=FALSE}
+train_control <- trainControl(method="cv", 
+                              number=5,
+                              summaryFunction = multiClassSummary) 
+
+nn.train.8h <- train(Oz8h ~.,
+                       data = subset(data_daily.vectors, select = -c(DATE, OzoneDay1hPeak)), 
+                       trControl = train_control, 
+                       method = "nnet", 
+                       tuneGrid = data.frame(size = seq(2,8,by=1), decay = 0),
+                       metric = "Sensitivity")
+
+
+```
+
+
+```{r}
+nn.train.8h
+```
+
+Parecido a lo que hemos visto con kNN, aunque estamos buscando por valores buenos de sensibilidad, los valores de kappa y especificidad deterioran mientras que la sensibilidad no cambia mucho.  Elegimos size=3 en lugar del 2 elegido automáticamente, por tener valores de Kappa y Specificity mejores.
+
+```{r}
+nn.train.8h.size3 <- train(Oz8h ~.,
+                       data = subset(data_daily.vectors, select = -c(DATE, OzoneDay1hPeak)), 
+                       trControl = train_control, 
+                       method = "nnet", 
+                       tuneGrid = data.frame(size = 3, decay = 0),
+                       metric = "Sensitivity")
+```
+
+```{r}
+nn.train.8h.size3
+```
+
+Ahora podemos (de cierto modo) visualizar la red neuronal.
+
+
+```{r}
+summary(nn.train.8h.size3)
+```
+
+```{r}
+plotnet(nn.train.8h.size3)#$finalModel)
+```
+
+Finalmente, la matriz de confusión:
+
+Directamente del objecto *train*, que nos da el rendimiento, tomando en cuenta la validación cruzada 5-fold, hecho durante la producción del modelo:
+
+```{r}
+confusionMatrix(nn.train.8h.size3, )
+```
+
+```{r}
+nn.train.8h.size3$results
+```
+
+
+# Resultados y Conclusiones
+
+Los datos analizados aquí tienen el reto grande de casos de ozono tan escasos, de menos de 5% de los registros.  Ese hecho ha impulsado un esfuerzo de preservar tantos registros positivos que posible, usando una variedad de métodos de imputación de valores no disponibles.  Ese trabajo también ha incluido la eliminación de atributos meteorológicos que tenían menos relevancia, juzgado por su correlación con días de ozono.  Siguiendo en los intentos de reducción de complejidad, hemos transformado las series de medidas horarias de temperatura y velocidad del viento, en clusters de vectores, reduciendo así 24 medidas en una clase.  Hemos elegido los métodos de clasificación de los vectores, tras una investigación para determinar cual, visualmente y numéricamente, daba mejor apoyo en clasificar registros de ozono alto, por la naturaleza de sus clases generados por el método en cuestión.    
+
+Tras ese esfuerzo extendido de procesamiento de los datos, hemos podido proceder al análisis de los datos, primero visualmente con la ayuda de gráficos, primariamente *scatterplots*, y después pasando por modelos de aprendizaje automatizado, con la meta de producir modelos predictivos para ayudar a avisar cuando hay un día con ozono alto.  
+
+Los modelos, al final, solo han sido creado para predecir los días de ozono alto medida por 8 horas - la otra clase de ozono agudo por una hora no ha sido estudiado con modelos por falta de tiempo.
+
+## Comparación de rendimiento de modelos
+
+Recogiendo las estadísticas de rendimiento de los modelos, usando validación cruzada 5-fold, se ven en la tabla siguiente.
+
+| Tipo de medida | Modelo Arbol C5.0 |  Modelo kNN | Modelo Red Neural |
+|:---------------|:------------------|:------------|:------------------|
+| Exactitud (Accuracy) | `r stats.best.C5.0$Accuracy` | `r knn.train.8h.k3$results$Accuracy`| `r nn.train.8h.size3$results$Accuracy`|
+| Cohen's Kappa | `r stats.best.C5.0$Kappa` | `r knn.train.8h.k3$results$Kappa` | `r nn.train.8h.size3$results$Kappa`|
+| Sensibilidad (Sensitivity) | `r stats.best.C5.0$Sensitivity` | `r knn.train.8h.k3$results$Sensitivity` | `r nn.train.8h.size3$results$Sensitivity`|
+| Especificidad (Specificity) | `r stats.best.C5.0$Specificity` | `r knn.train.8h.k3$results$Specificity` | `r nn.train.8h.size3$results$Specificity`|
+
+Dos medidas que hemos visto más importante son Kappa y Sensitivity, que son mejor adaptados a nuestra situación de casos positivos escasos.  La exactitud puede parecer artificialmente alta con nuestros datos, como que una regla sencilla de clasificar todos los registros como sin ozono alto, saldría con exactitud de aproximadamente (2500-150)/2500 o 94%.  Por tanto, hay que evaluar según otras medidas.
+
+Mirando los tres modelos predictivos, no hay diferencias enormes, pero si priorizamos Kappa y Sensibilidad tendremos que declarar kNN como el ganador, por una Kappa ganador, una Sensibilidad en segunda posición, y una especificidad ganador para romper el empatado.
+
+## Visualización de clasificación
+
+Haremos dos gráficos tipo *scatterplot* por el modelo ganador, kNN, para que podemos apreciar visualmente la clasificación automatizada.  
+
+Añadiremos dos columnas más a los datos por ese motivo, el primero la predicción de clase dada por el modelo, y el segundo un calculo basado en la columna de la clase verdadero y la clase de predicción.  En el *scatterplot*, veremos los puntos clasificados por color:
+
+* un color para los días sin ozono, verdadero, y sin predicción de ozono
+* un color para los días con ozono, pero sin predicción de ozono (también descrito como Falsos Negativos)
+* un color para los días sin ozono, pero con predicción de ozono (los Positivos Falsos)
+* un color para los días con ozono, con predicción de ozono (los Positivos Verdaderos)
+
+```{r}
+data_demo_pred <- data_daily.vectors
+
+knn.predict.on.fulldata <- predict(knn.train.8h.k3,  subset(data_daily.vectors, select=-c(DATE, OzoneDay1hPeak, Oz8h)))
+
+data_demo_pred <- as.data.frame(cbind(data_demo_pred, knn.predict.on.fulldata))
+
+```
+ 
+```{r}
+composite <- as.numeric(data_demo_pred$Oz8h) + 2*as.numeric(data_demo_pred$knn.predict.on.fulldata)
+#table(composite)
+```
+
+```{r}
+data_demo_pred$composite <- factor(composite, levels = c("3", "4", "5", "6"), labels = c("Negativo verdadero", "Negativo falso", "Positivo falso", "Positivo verdadero"))
+#data_demo_pred <- as.data.frame(cbind(data_demo_pred, composite = as.factor(composite, labels())))
+str(data_demo_pred)
+```
+
+```{r}
+table(data_demo_pred$composite)
+```
+
+Ahora podemos hacer los dos *scatterplots*.  Para ayudar a apercebir los puntos de interés, donde o el modelo o la realidad dice que hay ozono, hemos configurado la transparencia de los puntos para que sean menos transparentes lo más que suban la escala de negativo falso - positivo falso - positivo verdadero.  Aparte de la modificación para incorporar la visualización de los NV/NF/PF/PV, son iguales a los gráficos análogos en el apartado del análisis visual.
+
+```{r}
+ggplot(data=data_demo_pred, aes(x=U85, y=V85, color=composite, alpha=composite)) + geom_point() + geom_jitter(size=0.85, alpha=0.7) + xlab("Componente este-oeste viento a 850 hPa") +ylab("Componente norte-sur viento a 850 hPa")+ labs(title='Dias de Ozona alta medido por la media de 8h > 80ppb\nMezclando clase real vs predicción kNN', caption='La transparencia de los puntos es mayor por puntos sin ozono', alpha = "Transparencia según\nclasificación del punto", color= 'Color según\nclasificación del punto') + annotate("segment", x=-0.1, y=0.16, xend = 0.1, yend = -0.14)
+
+ggplot(data=data_demo_pred, aes(x=WSR_AV, y=T_PK, color=composite, alpha=composite)) + geom_point(position="jitter") + geom_jitter(size=0.85, alpha=0.7) + xlab("Velocidad media del viento") +ylab("Temperatura maxima diaria")+ labs(title='Dias de Ozona alta medido por la media de 8h > 80ppb\nMezclando clase real vs predicción kNN', caption='La transparencia de los puntos es mayor por puntos sin ozono', alpha = "Transparencia según\nclasificación del punto", color= 'Color según\nclasificación del punto') + geom_hline(yintercept=0.50) + annotate("segment", x=0.2, y=0.5, xend = 0.5, yend = 0.875)
+```
+
+
+Podemos apreciar que en el primero (T_PK vs WSR_AV), parece que tenemos muchos errores de predicción en la parte arriba-derecha, con negativos falsos (puntos verdes).  Hay menos errores de ese tipo fuera de la zona arriba-izquierda en la segunda.
+
+Entonces, nos quedamos con tres modelos automatizados que, en principio, podrían ayudar a predecir condiciones en que hay ozono de niveles contaminantes, en Houston.  Se podría, en principio, ser extendido a otros lugares, aunque condiciones como las direcciones de los vientos, y niveles absolutos de temperaturas y humedad relativa, podrían necesitar un traslado para adaptarse al nuevo localidad. 
+
+
+# Bibliografía
+
+1. https://www.science.org/content/article/here-are-some-world-s-worst-cities-air-quality
+
+2. https://en.wikipedia.org/wiki/Ozone
+
+3. Kun Zhang and Wei Fan, "Forecasting Skewed Biased Stochastic Ozone Days: analyses, solutions and beyond" 2006
+
+4. [National Oceanic and Atmospheric Administration's Glossary https://w1.weather.gov/glossary/index.php](https://w1.weather.gov/glossary/index.php)
+
+5. [Geopotential Height wikipedia https://en.wikipedia.org/wiki/Geopotential_height](https://en.wikipedia.org/wiki/Geopotential_height)
+
+6. [Dew Point wikipedia https://en.wikipedia.org/wiki/Dew_point](https://en.wikipedia.org/wiki/Dew_point)
+
+7. [Houston wikipedia, https://en.wikipedia.org/wiki/Houston](https://en.wikipedia.org/wiki/Houston) 
+
+8. [Prevailing Winds wikipedia, https://en.wikipedia.org/wiki/Prevailing_winds](https://en.wikipedia.org/wiki/Prevailing_winds)
+
+9. [Horse Latitudes wikipedia, https://en.wikipedia.org/wiki/Horse_latitudes](https://en.wikipedia.org/wiki/Horse_latitudes)
+
+10. [Atmospheric pressure wikipedia, https://en.wikipedia.org/wiki/Atmospheric_pressure](https://en.wikipedia.org/wiki/Atmospheric_pressure)
+
+11. [Climate of Houston wikipedia, https://en.wikipedia.org/wiki/Climate_of_Houston](https://en.wikipedia.org/wiki/Climate_of_Houston)
+
+12. [R, caret, and Parameter Tuning C5.0, https://www.euclidean.com/machine-learning-in-practice/2015/6/12/r-caret-and-parameter-tuning-c50](https://www.euclidean.com/machine-learning-in-practice/2015/6/12/r-caret-and-parameter-tuning-c50)
+
+
+13. [Machine Learning Evaluation Metrics in R, https://machinelearningmastery.com/machine-learning-evaluation-metrics-in-r/](https://machinelearningmastery.com/machine-learning-evaluation-metrics-in-r/)
+
+***
+
+
+
+
+
